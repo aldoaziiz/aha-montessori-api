@@ -213,7 +213,7 @@ th {
             <td style="width:90px; border:none; vertical-align:top;">
 
                 <img
-                    src="{{ public_path('assets/images/ahacdc-logo.jpeg') }}"
+                    src="{{ public_path('assets/images/ahamon-logo.jpeg') }}"
                     style="width:70px;"
                 >
 

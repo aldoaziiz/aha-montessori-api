@@ -42,8 +42,8 @@ return [
         // PRODUCTION
         // ======================
 
-        'https://aha-cdc.vercel.app',
-        'https://cdc.aha-center.com',
+        'https://aha-montessori.vercel.app',
+        'https://montessori.aha-center.com',
 
     ],
 
