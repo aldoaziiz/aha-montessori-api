@@ -149,8 +149,12 @@ class BillingController extends Controller
                 $registration->registrationPrograms as $item
             ) {
 
+                $quantity = $item->program->session_count == 0
+                            ? 1
+                            : $item->learning_period_months;
+
                 $subtotal =
-                    $item->price;
+                    $item->price * $quantity;
 
                 BillingItem::create([
 
@@ -162,7 +166,7 @@ class BillingController extends Controller
 
                     'price' => $item->price,
 
-                    'quantity' => 1,
+                    'quantity' => $quantity,
 
                     'subtotal' => $subtotal,
 

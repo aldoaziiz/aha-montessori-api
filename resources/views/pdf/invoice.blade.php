@@ -111,7 +111,7 @@ th {
 }
 
 .items-table th {
-	background: #2F5597;
+	background: #E6611D;
 	color: white;
 	font-weight: bold;
 	font-size: 12px;
@@ -213,7 +213,7 @@ th {
             <td style="width:90px; border:none; vertical-align:top;">
 
                 <img
-                    src="{{ public_path('assets/images/ahamon-logo.jpeg') }}"
+                    src="{{ public_path('assets/images/ahamon-logo.png') }}"
                     style="width:70px;"
                 >
 
@@ -222,7 +222,7 @@ th {
             <td style="border:none; vertical-align:top;">
 
                 <div class="company-name">
-                    AHA! Child Development Center
+                    AHA! Montessori
                 </div>
 
                 <div class="company-subtitle">
@@ -413,7 +413,7 @@ th {
         <br>
 
         This invoice is generated electronically by
-        AHA! Child Development Center.
+        AHA! Montessori.
 
     </div>
 

@@ -19,4 +19,14 @@ class ProgramCategory extends Model
             Program::class
         );
     }
+
+    public function sessionTimes()
+    {
+        return $this->hasMany(
+            ProgramCategorySessionTime::class,
+            'program_category_id'
+        )
+            ->where('is_active', 1)
+            ->orderBy('session_order');
+    }
 }

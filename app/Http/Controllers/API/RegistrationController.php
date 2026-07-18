@@ -372,9 +372,6 @@ class RegistrationController extends Controller
 
                     'child_id' => $child->id,
 
-                    'complaint' => $request->registration['complaint']
-                        ?? null,
-
                     'program_id' => $request->registration['program_id']
                         ?? null,
 
@@ -416,6 +413,8 @@ class RegistrationController extends Controller
 
                         'price' => $program->price,
 
+                        'learning_period_months' => $request->registration['program_duration_months'] ?? 6,
+
                     ]);
                 }
 
@@ -440,6 +439,8 @@ class RegistrationController extends Controller
 
                         'price' => $program->price,
 
+                        'learning_period_months' => $request->registration['program_duration_months'] ?? 6,
+
                     ]);
                 }
             }
@@ -459,7 +460,7 @@ class RegistrationController extends Controller
         $data = Registration::with([
             'child.guardians',
             'clinic',
-            'programs',
+            'programs.category',
             'billing.paymentStatus',
             'payer',
         ])->findOrFail($id);
@@ -500,7 +501,7 @@ class RegistrationController extends Controller
 
                 'payer_id' => 'nullable|exists:payers,id',
 
-                'complaint' => 'nullable|string',
+                'program_duration_months' => 'required|integer|in:6,12',
             ]);
 
             // ======================
@@ -510,11 +511,7 @@ class RegistrationController extends Controller
             $registration->update([
                 'clinic_id' => $validated['clinic_id'],
                 'program_id' => $validated['program_ids'][0],
-
                 'payer_id' => $validated['payer_id'] ?? null,
-
-                'complaint' => $validated['complaint'] ?? null,
-
             ]);
 
             // ======================
@@ -536,6 +533,7 @@ class RegistrationController extends Controller
                     'program_id' => $program->id,
 
                     'price' => $program->price,
+                    'learning_period_months' => $validated['program_duration_months'],
 
                 ]);
             }
@@ -621,6 +619,15 @@ class RegistrationController extends Controller
                 'program_category' => optional(
                     $registration->programs->first()
                 )->category,
+
+                'program_ids' => $registration
+                    ->programs
+                    ->pluck('id')
+                    ->values(),
+
+                'program_duration_months' => optional(
+                    $registration->programs->first()
+                )->pivot?->learning_period_months,
 
             ],
 

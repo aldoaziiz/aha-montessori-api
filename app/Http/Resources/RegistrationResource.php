@@ -49,8 +49,18 @@ class RegistrationResource extends JsonResource
                 return [
                     'id' => $program->id,
                     'name' => $program->name,
+
+                    // snapshot registration
                     'price' => $program->pivot->price,
+                    'learning_period_months' => $program->pivot->learning_period_months,
+
+                    // master program
                     'session_count' => $program->session_count,
+
+                    'program_category' => [
+                        'id' => $program->category?->id,
+                        'name' => $program->category?->name,
+                    ],
                 ];
             }),
 

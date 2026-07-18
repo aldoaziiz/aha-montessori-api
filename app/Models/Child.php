@@ -19,6 +19,7 @@ class Child extends Model
         'school_id',
         'school_class_id',
         'school_education_id',
+        'room_id',
     ];
 
     protected static function booted()
@@ -71,5 +72,10 @@ class Child extends Model
             ->using(ChildGuardian::class)
             ->withPivot('guardian_role_id')
             ->withTimestamps();
+    }
+
+    public function room()
+    {
+        return $this->belongsTo(Room::class);
     }
 }

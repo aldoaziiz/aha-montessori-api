@@ -10,6 +10,7 @@ class RegistrationProgram extends Model
         'registration_id',
         'program_id',
         'price',
+        'learning_period_months',
     ];
 
     public function registration()

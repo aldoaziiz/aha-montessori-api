@@ -191,13 +191,10 @@ class PublicRegistrationController extends Controller
                     }
 
                     RegistrationProgram::create([
-
                         'registration_id' => $registration->id,
-
                         'program_id' => $program->id,
-
                         'price' => $program->price,
-
+                        'learning_period_months' => $request->registration['program_duration_months'],
                     ]);
                 }
 

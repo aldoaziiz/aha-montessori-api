@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Models\ProgramCategorySessionTime;
 use App\Models\Registration;
 use App\Models\Staff;
 use App\Models\TherapySession;
 use Carbon\Carbon;
+use Carbon\CarbonPeriod;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -146,6 +148,14 @@ class TherapySessionController extends Controller
             );
         }
 
+        // filter therapy session status
+        if ($request->filled('therapy_session_status_id')) {
+            $query->where(
+                'therapy_session_status_id',
+                $request->therapy_session_status_id
+            );
+        }
+
         // ======================
         // WITHOUT ACTIVITY
         // ======================
@@ -186,41 +196,34 @@ class TherapySessionController extends Controller
 
         $request->validate([
             'registration_id' => 'required|exists:registrations,id',
-            'therapist_id' => 'required|exists:staff,id',
+            'therapist_id' => 'nullable|exists:staff,id',
             'therapy_date' => 'required|date',
             'start_time' => 'required',
-            'end_time' => 'required',
-
+            'end_time' => 'required|after:start_time',
             'notes' => 'nullable',
         ]);
 
-        //
-        if ($request->start_time >= $request->end_time) {
-
-            return response()->json([
-                'message' => 'End time must be greater than start time.',
-            ], 422);
-        }
-
-        $therapistConflict = TherapySession::where('therapist_id', $request->therapist_id)
-            ->where('therapy_date', $request->therapy_date)
-            ->where(function ($q) use ($request) {
-
-                $q->where('start_time', '<', $request->end_time)
-                    ->where('end_time', '>', $request->start_time);
-            })
+        // validasi tanggal dan jam sama
+        $duplicate = TherapySession::where(
+            'registration_id',
+            $request->registration_id
+        )
+            ->whereDate('therapy_date', $request->therapy_date)
+            ->where('start_time', $request->start_time)
+            ->where('end_time', $request->end_time)
             ->exists();
 
-        // validasi terapis sudah ada jadwal di waktu yang sama
-        if ($therapistConflict) {
-            return response()->json(['message' => 'Therapist is already booked for the selected time'], 422);
+        if ($duplicate) {
+            return response()->json([
+                'message' => 'This session already exists.',
+            ], 422);
         }
 
         // buat sesi terapi
         $session = TherapySession::create([
             'registration_id' => $request->registration_id,
             'therapy_session_status_id' => 1,
-            'therapist_id' => $request->therapist_id,
+            'therapist_id' => null,
             'therapy_date' => $request->therapy_date,
             'start_time' => $request->start_time,
             'end_time' => $request->end_time,
@@ -232,11 +235,6 @@ class TherapySessionController extends Controller
             'message' => 'Therapy session created',
             'data' => $session,
         ]);
-    }
-
-    public function show(string $id)
-    {
-        dd('masuk ke show');
     }
 
     public function update(Request $request, $id)
@@ -253,37 +251,42 @@ class TherapySessionController extends Controller
         }
 
         $validated = $request->validate([
-            'therapist_id' => 'required|exists:staff,id',
+            'therapist_id' => 'nullable|exists:staff,id',
             'therapy_date' => 'required|date',
             'start_time' => 'required',
             'end_time' => 'required|after:start_time',
             'notes' => 'nullable|string',
         ]);
 
-        // therapist conflict
-        $conflict = TherapySession::where(
-            'therapist_id',
-            $validated['therapist_id']
+        $duplicate = TherapySession::where(
+            'registration_id',
+            $session->registration_id
         )
             ->where('id', '!=', $session->id)
-            ->whereDate(
-                'therapy_date',
-                $validated['therapy_date']
-            )
-            ->where(function ($query) use ($validated) {
-                $query
-                    ->where('start_time', '<', $validated['end_time'])
-                    ->where('end_time', '>', $validated['start_time']);
-            })
+            ->whereDate('therapy_date', $validated['therapy_date'])
+            ->where('start_time', $validated['start_time'])
+            ->where('end_time', $validated['end_time'])
             ->exists();
 
-        if ($conflict) {
+        if ($duplicate) {
             return response()->json([
-                'message' => 'Therapist already has another session.',
+                'message' => 'This session already exists.',
             ], 422);
         }
 
-        $session->update($validated);
+        $session->update([
+
+            'therapist_id' => null,
+
+            'therapy_date' => $validated['therapy_date'],
+
+            'start_time' => $validated['start_time'],
+
+            'end_time' => $validated['end_time'],
+
+            'notes' => $validated['notes'] ?? null,
+
+        ]);
 
         return response()->json([
             'message' => 'Session updated successfully.',
@@ -327,20 +330,21 @@ class TherapySessionController extends Controller
 
             'schedule_configs.*.day' => 'required|integer|between:0,6',
 
-            'schedule_configs.*.therapist_id' => 'required|exists:staff,id',
-
-            'schedule_configs.*.time_slot' => 'required|string',
+            'schedule_configs.*.session_time_id' => 'required|exists:program_category_session_times,id',
         ]);
 
-        $registration = Registration::with(
-            'programs'
-        )->findOrFail(
-            $validated['registration_id']
-        );
+        $registration = Registration::with([
+            'programs.category',
+        ])->findOrFail($validated['registration_id']);
 
         $totalSessions = $registration
             ->programs
-            ->sum('session_count');
+            ->sum(function ($program) {
+
+                return $program->session_count
+                    * $program->pivot->learning_period_months;
+
+            });
 
         if ($totalSessions <= 0) {
 
@@ -361,134 +365,211 @@ class TherapySessionController extends Controller
             ], 422);
         }
 
-        return DB::transaction(function () use (
-            $validated,
+        $generatedSchedules = $this->generateSchedules(
+            $validated['start_date'],
+            $validated['schedule_configs'],
             $totalSessions
+        );
+
+        [
+            'validSchedules' => $validSchedules,
+            'conflicts' => $conflicts,
+        ] = $this->checkConflicts(
+            $generatedSchedules
+        );
+
+        if (! empty($conflicts)) {
+
+            return response()->json([
+                'message' => 'Some selected sessions are already full.',
+                'conflicts' => $conflicts,
+            ], 422);
+        }
+
+        $sessions = DB::transaction(function () use (
+            $validated,
+            $validSchedules
         ) {
 
-            $generatedSchedules = [];
+            return $this->createSessions(
+                $validated['registration_id'],
+                $validated['notes'] ?? null,
+                $validSchedules
+            );
+        });
 
-            $currentDate = Carbon::parse($validated['start_date']);
+        return response()->json([
 
-            while (count($generatedSchedules) < $totalSessions) {
+            'message' => count($sessions).' sessions generated successfully.',
 
-                foreach ($validated['schedule_configs'] as $config) {
+            'target_sessions' => $totalSessions,
 
-                    if (
-                        $currentDate->dayOfWeek === $config['day']
-                    ) {
+            'generated_sessions' => count($sessions),
 
-                        $generatedSchedules[] = [
-                            'date' => $currentDate->copy(),
-                            'therapist_id' => $config['therapist_id'],
-                            'time_slot' => $config['time_slot'],
-                        ];
+            'data' => $sessions,
 
-                        break;
-                    }
+        ]);
+    }
+
+    private function generateSchedules(
+        string $startDate,
+        array $scheduleConfigs,
+        int $totalSessions
+    ): array {
+
+        $generatedSchedules = [];
+
+        $currentDate = Carbon::parse($startDate);
+
+        $sessionTimes = ProgramCategorySessionTime::whereIn(
+            'id',
+            collect($scheduleConfigs)->pluck('session_time_id')
+        )->get()->keyBy('id');
+
+        $scheduleConfigs = collect($scheduleConfigs)
+            ->map(function ($config) use ($sessionTimes) {
+
+                $config['session_time'] = $sessionTimes[$config['session_time_id']] ?? null;
+
+                return $config;
+            })
+            ->values()
+            ->all();
+
+        while (count($generatedSchedules) < $totalSessions) {
+
+            foreach ($scheduleConfigs as $config) {
+
+                if ($currentDate->dayOfWeek !== $config['day']) {
+                    continue;
                 }
 
-                $currentDate->addDay();
+                $generatedSchedules[] = [
+
+                    'therapy_date' => $currentDate->format('Y-m-d'),
+
+                    'session_time' => $config['session_time'],
+
+                ];
+
+                break;
             }
 
-            // ======================
-            // CHECK CONFLICTS
-            // ======================
+            $currentDate->addDay();
+        }
 
-            $conflicts = [];
+        return $generatedSchedules;
+    }
 
-            foreach ($generatedSchedules as $schedule) {
+    private function checkConflicts(array $generatedSchedules): array
+    {
+        $validSchedules = [];
 
-                [$startTime, $endTime] = array_map(
-                    'trim',
-                    explode('-', $schedule['time_slot'])
-                );
+        $conflicts = [];
 
-                $conflictSession = TherapySession::with([
-                    'therapist',
-                    'registration.child',
-                ])
-                    ->where(
-                        'therapist_id',
-                        $schedule['therapist_id']
-                    )
-                    ->whereDate(
-                        'therapy_date',
-                        $schedule['date']
-                    )
-                    ->where(function ($query) use ($startTime, $endTime) {
+        $slotCounts = [];
 
-                        $query
-                            ->where('start_time', '<', $endTime)
-                            ->where('end_time', '>', $startTime);
-                    })
-                    ->first();
+        $conflictKeys = [];
 
-                if ($conflictSession) {
+        foreach ($generatedSchedules as $schedule) {
+
+            $sessionTime = $schedule['session_time'];
+
+            $capacity = $sessionTime->capacity;
+
+            $key = implode('|', [
+                $schedule['therapy_date'],
+                $sessionTime->start_time,
+                $sessionTime->end_time,
+            ]);
+
+            // Query database hanya sekali untuk setiap slot
+            if (! array_key_exists($key, $slotCounts)) {
+
+                $slotCounts[$key] = TherapySession::whereDate(
+                    'therapy_date',
+                    $schedule['therapy_date']
+                )
+                    ->where('start_time', $sessionTime->start_time)
+                    ->where('end_time', $sessionTime->end_time)
+                    ->count();
+            }
+
+            // Slot sudah penuh
+            if ($slotCounts[$key] >= $capacity) {
+
+                if (! isset($conflictKeys[$key])) {
+
+                    $conflictKeys[$key] = true;
 
                     $conflicts[] = [
 
-                        'therapy_date' => $schedule['date']->format('Y-m-d'),
+                        'therapy_date' => $schedule['therapy_date'],
 
-                        'time_slot' => $schedule['time_slot'],
+                        'day' => Carbon::parse(
+                            $schedule['therapy_date']
+                        )->format('l'),
 
-                        'therapist_name' => $conflictSession->therapist->name,
+                        'session_name' => $sessionTime->session_name,
 
-                        'child_name' => $conflictSession->registration->child->name,
+                        'start_time' => $sessionTime->start_time,
+
+                        'end_time' => $sessionTime->end_time,
+
+                        'capacity' => $capacity,
+
+                        'occupied' => $slotCounts[$key],
 
                     ];
                 }
+
+                continue;
             }
 
-            if (! empty($conflicts)) {
+            $validSchedules[] = $schedule;
 
-                return response()->json([
-                    'message' => 'Therapist conflict detected.',
+            $slotCounts[$key]++;
+        }
 
-                    'conflicts' => $conflicts,
-                ], 422);
-            }
+        return [
 
-            // ======================
-            // CREATE SESSIONS
-            // ======================
+            'validSchedules' => $validSchedules,
 
-            $sessions = [];
+            'conflicts' => $conflicts,
 
-            foreach ($generatedSchedules as $schedule) {
+        ];
+    }
 
-                [$startTime, $endTime] = array_map(
-                    'trim',
-                    explode('-', $schedule['time_slot'])
-                );
+    private function createSessions(
+        int $registrationId,
+        ?string $notes,
+        array $validSchedules
+    ): array {
 
-                $sessions[] = TherapySession::create([
+        $sessions = [];
 
-                    'registration_id' => $validated['registration_id'],
+        foreach ($validSchedules as $schedule) {
 
-                    'therapist_id' => $schedule['therapist_id'],
+            $sessions[] = TherapySession::create([
 
-                    'therapy_session_status_id' => 1,
+                'registration_id' => $registrationId,
 
-                    'therapy_date' => $schedule['date']->format('Y-m-d'),
+                'therapist_id' => null,
 
-                    'start_time' => $startTime,
+                'therapy_session_status_id' => 1,
 
-                    'end_time' => $endTime,
+                'therapy_date' => $schedule['therapy_date'],
 
-                    'notes' => $validated['notes'] ?? null,
-                ]);
-            }
+                'start_time' => $schedule['session_time']->start_time,
 
-            return response()->json([
-                'message' => count($sessions)
-                    .' sessions generated successfully.',
+                'end_time' => $schedule['session_time']->end_time,
 
-                'target_sessions' => $totalSessions,
+                'notes' => $notes,
 
-                'data' => $sessions,
             ]);
-        });
+        }
+
+        return $sessions;
     }
 
     public function availability(Request $request)
@@ -537,6 +618,242 @@ class TherapySessionController extends Controller
         return response()->json([
             'therapists' => $therapists,
             'sessions' => $sessions,
+        ]);
+    }
+
+    public function grid(Request $request)
+    {
+        $validated = $request->validate([
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+        ]);
+
+        $sessions = TherapySession::with([
+            'registration.child',
+            'registration.programs.category',
+        ])
+            ->whereBetween('therapy_date', [
+                $validated['start_date'],
+                $validated['end_date'],
+            ])
+            ->orderBy('therapy_date')
+            ->orderBy('start_time')
+            ->get();
+
+        return $sessions->map(function ($session) {
+
+            $therapyProgram = $session
+                ->registration
+                ->programs
+                ->first(function ($program) {
+                    return $program->session_count > 0;
+                });
+
+            return [
+
+                'id' => $session->id,
+
+                'therapy_date' => $session->therapy_date,
+
+                'start_time' => substr($session->start_time, 0, 5),
+
+                'end_time' => substr($session->end_time, 0, 5),
+
+                'child_name' => $session->registration->child->name,
+
+                'program_category' => optional(
+                    $therapyProgram?->category
+                )->name,
+
+                'therapy_session_status_id' => $session->therapy_session_status_id,
+
+            ];
+
+        });
+    }
+
+    public function gridDemo(Request $request)
+    {
+        $validated = $request->validate([
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+        ]);
+
+        $names = [
+            'Muhammad Arkana Pratama',
+            'Azzam Fadillah',
+            'Alya Putri Ramadhani',
+            'Aisyah Nabila',
+            'Azka Alfarizi',
+            'Benjamin Jonathan',
+            'Brigitte Valencia',
+            'Calista Aurelia',
+            'Darren Wijaya',
+            'Dinda Maharani',
+            'Elvano Saputra',
+            'Farrel Mahendra',
+            'Farel Ramadhan',
+            'Fiona Clarissa',
+            'Gavin Alexander',
+            'Hana Putri',
+            'Ibra Alghifari',
+            'Jihan Azzahra',
+            'Kaira Humaira',
+            'Kayla Anindita',
+            'Keenan Alvaro',
+            'Keyla Putri',
+            'Luna Amalia',
+            'Mika Prakoso',
+            'Naura Khairunnisa',
+            'Nadine Valencia',
+            'Nayla Putri',
+            'Olivia Nathania',
+            'Qinan Pratama',
+            'Rafa Maulana',
+            'Rafif Akbar',
+            'Rania Putri',
+            'Rasya Ramadhan',
+            'Riko Saputra',
+            'Salma Zahra',
+            'Satria Nugraha',
+            'Shaka Pratama',
+            'Shakira Azzahra',
+            'Tasya Maharani',
+            'Vano Prasetyo',
+            'Viona Clarissa',
+            'Yasmin Aurelia',
+            'Zayn Alfatih',
+            'Zahra Khairunnisa',
+            'Zidan Prakoso',
+            'Alif Ramadhan',
+            'Alvaro Mahendra',
+            'Bella Anastasya',
+            'Celine Aurelia',
+            'Daffa Ramadhan',
+            'Damar Saputra',
+            'Evan Christian',
+            'Faris Alghifari',
+            'Gio Mahardika',
+            'Hazel Nathania',
+            'Intan Permata',
+            'Jovanka Aurelia',
+            'Kinan Maharani',
+            'Liam Jonathan',
+            'Mila Putri',
+            'Niko Saputra',
+            'Putri Maharani',
+            'Queen Valencia',
+            'Rendra Saputra',
+            'Salsa Azzahra',
+            'Tegar Prakoso',
+            'Umar Faruq',
+            'Valen Christian',
+            'Wafi Ramadhan',
+            'Xavier Jonathan',
+            'Yudha Saputra',
+            'Zaki Alghifari',
+        ];
+
+        $slots = [
+            [
+                'category' => 'TODDLER',
+                'start' => '08:00',
+                'end' => '09:30',
+                'max' => 10,
+            ],
+            [
+                'category' => 'TODDLER',
+                'start' => '10:30',
+                'end' => '12:00',
+                'max' => 10,
+            ],
+            [
+                'category' => 'TODDLER',
+                'start' => '15:00',
+                'end' => '16:30',
+                'max' => 10,
+            ],
+            [
+                'category' => 'KINDER',
+                'start' => '08:00',
+                'end' => '10:00',
+                'max' => 8,
+            ],
+            [
+                'category' => 'KINDER',
+                'start' => '10:30',
+                'end' => '12:30',
+                'max' => 8,
+            ],
+            [
+                'category' => 'KINDER',
+                'start' => '15:00',
+                'end' => '17:00',
+                'max' => 8,
+            ],
+        ];
+
+        $rows = [];
+
+        $id = 1;
+
+        $period = CarbonPeriod::create(
+            $validated['start_date'],
+            $validated['end_date']
+        );
+
+        foreach ($period as $date) {
+
+            if ($date->isWeekend()) {
+
+                $rows[] = [
+                    'id' => $id++,
+
+                    'therapy_date' => $date->format('Y-m-d'),
+
+                    'start_time' => null,
+
+                    'end_time' => null,
+
+                    'child_name' => null,
+
+                    'program_category' => 'HOLIDAY',
+
+                    'therapy_session_status_id' => null,
+                ];
+
+                continue;
+            }
+
+            foreach ($slots as $slot) {
+
+                $count = rand(0, $slot['max']);
+
+                for ($i = 0; $i < $count; $i++) {
+
+                    $rows[] = [
+
+                        'id' => $id++,
+
+                        'therapy_date' => $date->format('Y-m-d'),
+
+                        'start_time' => $slot['start'],
+
+                        'end_time' => $slot['end'],
+
+                        'child_name' => $names[array_rand($names)],
+
+                        'program_category' => $slot['category'],
+
+                        'therapy_session_status_id' => 1,
+
+                    ];
+                }
+            }
+        }
+
+        return response()->json([
+            'data' => $rows,
         ]);
     }
 

@@ -12,6 +12,7 @@ use App\Http\Controllers\API\GuardianController;
 use App\Http\Controllers\API\GuardianRoleController;
 use App\Http\Controllers\API\MasterDataController;
 use App\Http\Controllers\API\PayerController;
+use App\Http\Controllers\API\ProgramCategorySessionTimeController;
 use App\Http\Controllers\API\ProgramController;
 use App\Http\Controllers\API\PublicRegistrationController;
 use App\Http\Controllers\API\RegistrationController;
@@ -22,6 +23,7 @@ use App\Http\Controllers\API\SchoolEducationController;
 use App\Http\Controllers\API\StaffController;
 use App\Http\Controllers\API\StaffRoleController;
 use App\Http\Controllers\API\TherapySessionController;
+use App\Http\Controllers\API\TherapySessionStatusController;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -250,6 +252,11 @@ Route::middleware([
         [ProgramController::class, 'deactivate']
     );
 
+    Route::get(
+        '/program-categories/{programCategory}/session-times',
+        [ProgramCategorySessionTimeController::class, 'index']
+    );
+
     Route::apiResource(
         'guardian-roles',
         GuardianRoleController::class
@@ -263,6 +270,11 @@ Route::middleware([
     Route::apiResource(
         'rooms',
         RoomController::class
+    );
+
+    Route::get(
+        '/therapy-session-statuses',
+        [TherapySessionStatusController::class, 'index']
     );
 
     // ======================
@@ -282,6 +294,16 @@ Route::middleware([
     Route::get(
         'therapy-sessions/availability',
         [TherapySessionController::class, 'availability']
+    );
+
+    Route::get(
+        'therapy-sessions/grid',
+        [TherapySessionController::class, 'grid']
+    );
+
+    Route::get(
+        'therapy-sessions/grid-demo',
+        [TherapySessionController::class, 'gridDemo']
     );
 
     Route::put(

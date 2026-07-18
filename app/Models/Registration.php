@@ -13,6 +13,7 @@ class Registration extends Model
         'complaint',
         'program_id',
         'payer_id',
+        'room_id',
     ];
 
     public function child()
@@ -30,7 +31,10 @@ class Registration extends Model
         return $this->belongsToMany(
             Program::class,
             'registration_programs'
-        )->withPivot('price');
+        )->withPivot(
+            'price',
+            'learning_period_months'
+        );
     }
 
     public function payer()
@@ -58,5 +62,10 @@ class Registration extends Model
     public function billing()
     {
         return $this->hasOne(Billing::class);
+    }
+
+    public function room()
+    {
+        return $this->belongsTo(Room::class);
     }
 }
