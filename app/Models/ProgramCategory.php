@@ -26,7 +26,6 @@ class ProgramCategory extends Model
             ProgramCategorySessionTime::class,
             'program_category_id'
         )
-            ->where('is_active', 1)
             ->orderBy('session_order');
     }
 }

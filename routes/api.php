@@ -12,6 +12,8 @@ use App\Http\Controllers\API\GuardianController;
 use App\Http\Controllers\API\GuardianRoleController;
 use App\Http\Controllers\API\MasterDataController;
 use App\Http\Controllers\API\PayerController;
+use App\Http\Controllers\API\ProgramCategoryController;
+use App\Http\Controllers\API\ProgramCategorySessionController;
 use App\Http\Controllers\API\ProgramCategorySessionTimeController;
 use App\Http\Controllers\API\ProgramController;
 use App\Http\Controllers\API\PublicRegistrationController;
@@ -255,6 +257,31 @@ Route::middleware([
     Route::get(
         '/program-categories/{programCategory}/session-times',
         [ProgramCategorySessionTimeController::class, 'index']
+    );
+
+    Route::get(
+        'program-category-sessions',
+        [ProgramCategorySessionController::class, 'index']
+    );
+
+    Route::put(
+        'program-category-sessions/{programCategorySession}',
+        [ProgramCategorySessionController::class, 'update']
+    );
+
+    Route::patch(
+        'program-category-sessions/{programCategorySession}/toggle-status',
+        [ProgramCategorySessionController::class, 'toggleStatus']
+    );
+
+    Route::get(
+        'program-categories',
+        [ProgramCategoryController::class, 'index']
+    );
+
+    Route::post(
+        'program-categories',
+        [ProgramCategoryController::class, 'store']
     );
 
     Route::apiResource(
