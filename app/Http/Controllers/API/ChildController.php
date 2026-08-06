@@ -27,6 +27,7 @@ class ChildController extends Controller
     {
         $query = Child::with([
             'status:id,name',
+            'programCategory:id,name',
         ]);
 
         // ======================
@@ -90,6 +91,7 @@ class ChildController extends Controller
                 'schoolClass:id,name',
                 'schoolEducation:id,name',
                 'guardians:id,name,phone',
+                'programCategory:id,name',
             ])->find($id);
 
         if (! $child) {

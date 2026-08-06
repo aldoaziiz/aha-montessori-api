@@ -14,6 +14,7 @@ class Registration extends Model
         'program_id',
         'payer_id',
         'room_id',
+        'program_category_id',
     ];
 
     public function child()
@@ -67,5 +68,12 @@ class Registration extends Model
     public function room()
     {
         return $this->belongsTo(Room::class);
+    }
+
+    public function programCategory()
+    {
+        return $this->belongsTo(
+            ProgramCategory::class
+        );
     }
 }

@@ -41,11 +41,4 @@ class TherapySession extends Model
     {
         return $this->belongsTo(Room::class);
     }
-
-    public function activity()
-    {
-        return $this->hasOne(
-            Activity::class
-        );
-    }
 }

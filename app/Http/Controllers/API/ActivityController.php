@@ -1,28 +1,26 @@
 <?php
 
-namespace App\Http\Controllers\API;
+namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Activity;
-use App\Models\ActivityPhoto;
+use App\Models\ActivityMedia;
+use App\Models\Child;
+use App\Models\ProgramCategorySessionTime;
 use App\Models\TherapySession;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class ActivityController extends Controller
 {
     private function forbidGuardian()
     {
-        if (
-            auth()->user()->role ===
-            'guardian'
-        ) {
-
-            abort(
-                403,
-                'Forbidden'
-            );
-
+        if (auth()->user()->role === 'guardian') {
+            abort(403, 'Forbidden');
         }
     }
 
@@ -30,97 +28,74 @@ class ActivityController extends Controller
     {
         $user = auth()->user();
 
+        $perPage = (int) $request->input(
+            'per_page',
+            10
+        );
+
+        $perPage = max(
+            1,
+            min($perPage, 20)
+        );
+
+        $search = trim(
+            (string) $request->input(
+                'search',
+                ''
+            )
+        );
+
         $query = Activity::with([
-            'photos',
-            'therapySession.registration.child',
-            'therapySession.registration.programs',
-            'therapySession.therapist',
+            'programCategory:id,name',
+            'programCategorySessionTime:id,session_name,start_time,end_time',
+            'staff:id,name',
+            'children:id,name,nickname',
+            'media',
         ])
-            ->join(
-                'therapy_sessions',
-                'activities.therapy_session_id',
-                '=',
-                'therapy_sessions.id'
-            )
-            ->orderByDesc(
-                'therapy_sessions.therapy_date'
-            )
-            ->orderByDesc(
-                'therapy_sessions.start_time'
-            )
-            ->select('activities.*');
+            ->orderByDesc('created_at')
+            ->orderByDesc('id');
 
         // ======================
         // GUARDIAN FILTER
         // ======================
 
         if ($user->role === 'guardian') {
+            $guardian = $user->guardian;
 
-            $guardian =
-                $user->guardian;
-
-            $childIds =
-                $guardian
-                    ->children()
-                    ->pluck('children.id');
+            $childIds = $guardian
+                ->children()
+                ->pluck('children.id');
 
             $query->whereHas(
-                'therapySession.registration',
+                'children',
                 function ($q) use ($childIds) {
-
                     $q->whereIn(
-                        'child_id',
+                        'children.id',
                         $childIds
                     );
-
                 }
             );
-
-        }
-
-        // ======================
-        // THERAPIST FILTER
-        // ======================
-
-        if ($user->role === 'therapist') {
-
-            $query->whereHas(
-                'therapySession',
-                function ($q) use ($user) {
-
-                    $q->where(
-                        'therapist_id',
-                        $user->staff->id
-                    );
-
-                }
-            );
-
         }
 
         // ======================
         // SEARCH CHILD
         // ======================
 
-        if ($request->search) {
-
+        if ($search !== '') {
             $query->whereHas(
-                'therapySession.registration.child',
-                function ($q) use ($request) {
-
+                'children',
+                function ($q) use ($search) {
                     $q->where(
                         'name',
                         'like',
-                        '%'.$request->search.'%'
+                        '%'.$search.'%'
                     );
                 }
             );
         }
 
         return response()->json(
-            $query->paginate(
-                $request->per_page ?? 10
-            )
+            $query->paginate($perPage)
         );
     }
 
@@ -128,19 +103,58 @@ class ActivityController extends Controller
     {
         $this->forbidGuardian();
 
-        // ======================
-        // VALIDATION
-        // ======================
+        $validated = $request->validate([
 
-        $request->validate([
-
-            'therapy_session_id' => [
+            'program_category_id' => [
                 'required',
-                'exists:therapy_sessions,id',
-                'unique:activities,therapy_session_id',
+                'exists:program_categories,id',
             ],
 
-            'caption' => 'nullable|string',
+            'therapy_date' => [
+                'required',
+                'date',
+            ],
+
+            'program_category_session_time_id' => [
+                'required',
+                Rule::exists(
+                    'program_category_session_times',
+                    'id'
+                )->where(function ($query) use ($request) {
+                    $query->where(
+                        'program_category_id',
+                        $request->input('program_category_id')
+                    );
+                }),
+            ],
+
+            'description' => [
+                'nullable',
+                'string',
+            ],
+
+            'child_ids' => [
+                'required',
+                'array',
+                'min:1',
+            ],
+
+            'child_ids.*' => [
+                'required',
+                'integer',
+                'exists:children,id',
+            ],
+
+            'photos' => [
+                'nullable',
+                'array',
+                'max:10',
+            ],
+
+            'photos.*' => [
+                'image',
+                'max:5120',
+            ],
 
             'video' => [
                 'nullable',
@@ -149,110 +163,697 @@ class ActivityController extends Controller
                 'max:102400',
             ],
 
-            'photos.*' => 'nullable|image|max:5120',
-
         ]);
 
-        // ======================
-        // SESSION STATUS
-        // ======================
+        $children = collect(
+            $validated['child_ids']
+        )
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
 
-        $therapySession = TherapySession::findOrFail(
-            $request->therapy_session_id
-        );
+        $matchedChildCount = Child::query()
+            ->whereIn('id', $children)
+            ->where(
+                'program_category_id',
+                $validated['program_category_id']
+            )
+            ->where('status_id', 1)
+            ->count();
 
-        if ($therapySession->therapy_session_status_id === 3) {
-
+        if ($matchedChildCount !== $children->count()) {
             return response()->json([
-                'message' => 'Cannot create activity for Alpha session.',
+                'message' => 'Selected children do not match the activity program category or are inactive.',
             ], 422);
         }
 
-        // ======================
-        // MINIMUM CONTENT
-        // ======================
+        $description = trim(
+            $validated['description'] ?? ''
+        );
 
         if (
-            ! $request->caption &&
+            $description === '' &&
             ! $request->hasFile('video') &&
             ! $request->hasFile('photos')
         ) {
-
             return response()->json([
-                'message' => 'Caption, photo, or video is required.',
+                'message' => 'Description, photo, or video is required.',
             ], 422);
         }
 
-        // ======================
-        // UPLOAD VIDEO
-        // ======================
+        $disk = Storage::disk(
+            config('filesystems.default')
+        );
 
-        $videoPath = null;
+        $uploadedMedia = [];
+        $sortOrder = 1;
 
-        if ($request->hasFile('video')) {
+        try {
 
-            $videoPath = $request
-                ->file('video')
-                ->store(
-                    'activities/videos'
+            // ======================
+            // UPLOAD PHOTOS FIRST
+            // ======================
+
+            if ($request->hasFile('photos')) {
+
+                foreach ($request->file('photos') as $photo) {
+
+                    $fileName =
+                        Str::random(40).
+                        '.'.
+                        $photo->getClientOriginalExtension();
+
+                    /*
+                     * Ambil metadata sebelum file dipindahkan.
+                     */
+                    $mimeType = $photo->getMimeType();
+                    $fileSize = $photo->getSize();
+
+                    $path = $disk->putFileAs(
+                        'montessori/activities',
+                        $photo,
+                        $fileName
+                    );
+
+                    if (! $path) {
+                        throw new \RuntimeException(
+                            'Failed to upload activity photo.'
+                        );
+                    }
+
+                    $uploadedMedia[] = [
+                        'media_type' => 'photo',
+                        'mime_type' => $mimeType,
+                        'file_name' => $fileName,
+                        'file_path' => $path,
+                        'file_size' => $fileSize,
+                        'sort_order' => $sortOrder++,
+                    ];
+                }
+            }
+
+            // ======================
+            // UPLOAD VIDEO FIRST
+            // ======================
+
+            if ($request->hasFile('video')) {
+
+                $video = $request->file('video');
+
+                $fileName =
+                    Str::random(40).
+                        '.'.
+                        $video->getClientOriginalExtension();
+
+                $mimeType = $video->getMimeType();
+                $fileSize = $video->getSize();
+
+                $path = $disk->putFileAs(
+                    'montessori/activities',
+                    $video,
+                    $fileName
                 );
+
+                if (! $path) {
+                    throw new \RuntimeException(
+                        'Failed to upload activity video.'
+                    );
+                }
+
+                $uploadedMedia[] = [
+                    'media_type' => 'video',
+                    'mime_type' => $mimeType,
+                    'file_name' => $fileName,
+                    'file_path' => $path,
+                    'file_size' => $fileSize,
+                    'sort_order' => $sortOrder++,
+                ];
+            }
+
+            // ======================
+            // DATABASE TRANSACTION
+            // ======================
+
+            DB::transaction(function () use (
+                $validated,
+                $children,
+                $description,
+                $uploadedMedia
+            ) {
+                $activity = Activity::create([
+                    'program_category_id' => $validated['program_category_id'],
+
+                    'therapy_date' => $validated['therapy_date'],
+
+                    'program_category_session_time_id' => $validated[
+                            'program_category_session_time_id'
+                        ],
+
+                    'staff_id' => auth()->user()->staff->id,
+
+                    'description' => $description !== ''
+                            ? $description
+                            : null,
+                ]);
+
+                $activity
+                    ->children()
+                    ->attach($children->all());
+
+                $this->recalculateAttendanceStatuses(
+                    $activity->therapy_date,
+                    $activity->program_category_session_time_id,
+                    $children
+                );
+
+                /*
+                 * File sudah berhasil diunggah.
+                 * Di dalam transaksi kita hanya membuat record DB.
+                 */
+                foreach ($uploadedMedia as $media) {
+                    ActivityMedia::create([
+                        'activity_id' => $activity->id,
+                        ...$media,
+                    ]);
+                }
+            });
+
+        } catch (\Throwable $exception) {
+
+            /*
+             * Upload atau transaksi DB gagal.
+             * Bersihkan seluruh file baru yang sempat tersimpan.
+             */
+            foreach ($uploadedMedia as $media) {
+
+                $filePath =
+                    $media['file_path'] ?? null;
+
+                if (! $filePath) {
+                    continue;
+                }
+
+                try {
+                    if ($disk->exists($filePath)) {
+                        $disk->delete($filePath);
+                    }
+                } catch (\Throwable $cleanupException) {
+                    /*
+                     * Jangan menutupi exception utama apabila
+                     * proses cleanup storage juga gagal.
+                     */
+                    report($cleanupException);
+                }
+            }
+
+            throw $exception;
         }
 
-        // ======================
-        // CREATE ACTIVITY
-        // ======================
+        return response()->json([
+            'message' => 'Activity created successfully.',
+        ]);
+    }
 
-        $activity = Activity::create([
+    public function show(Activity $activity)
+    {
+        $this->forbidGuardian();
 
-            'therapy_session_id' => $request->therapy_session_id,
+        $activity->load([
 
-            'caption' => $request->caption,
+            'children',
 
-            'video' => $videoPath,
+            'media',
+
+            'programCategory',
+
+            'programCategorySessionTime',
 
         ]);
 
-        $activity->therapySession()->update([
-            'therapy_session_status_id' => 2,
+        return response()->json([
+
+            'data' => $activity,
+
+        ]);
+    }
+
+    public function update(
+        Request $request,
+        Activity $activity
+    ) {
+        $this->forbidGuardian();
+
+        $activity->load([
+            'children',
+            'media',
+            'programCategorySessionTime',
         ]);
 
-        // ======================
-        // UPLOAD PHOTOS
-        // ======================
+        $validated = $request->validate([
 
-        if ($request->hasFile('photos')) {
+            'description' => [
+                'nullable',
+                'string',
+            ],
 
-            foreach (
-                $request->file('photos') as $photo
-            ) {
+            'child_ids' => [
+                'required',
+                'array',
+                'min:1',
+            ],
 
-                $photoPath = $photo->store(
-                    'activities/photos'
+            'child_ids.*' => [
+                'required',
+                'integer',
+                'exists:children,id',
+            ],
+
+            'removed_media_ids' => [
+                'nullable',
+                'array',
+            ],
+
+            'removed_media_ids.*' => [
+                'integer',
+
+                Rule::exists(
+                    'activity_media',
+                    'id'
+                )->where(function ($query) use ($activity) {
+
+                    $query->where(
+                        'activity_id',
+                        $activity->id
+                    );
+
+                }),
+            ],
+
+            'photos' => [
+                'nullable',
+                'array',
+            ],
+
+            'photos.*' => [
+                'image',
+                'max:5120',
+            ],
+
+            'video' => [
+                'nullable',
+                'file',
+                'mimetypes:video/mp4,video/quicktime,video/x-msvideo',
+                'max:102400',
+            ],
+
+        ]);
+
+        /*
+         * Pastikan seluruh child masih berasal dari
+         * Program Category milik Activity.
+         */
+        $newChildIds = collect(
+            $validated['child_ids']
+        )
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $matchedChildCount = Child::query()
+
+            ->whereIn(
+                'id',
+                $newChildIds
+            )
+
+            ->where(
+                'program_category_id',
+                $activity->program_category_id
+            )
+
+            ->count();
+
+        if (
+            $matchedChildCount !==
+            $newChildIds->count()
+        ) {
+
+            return response()->json([
+                'message' => 'Selected children do not match the activity program category.',
+            ], 422);
+
+        }
+
+        $removedMediaIds = collect(
+            $validated['removed_media_ids'] ?? []
+        )
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        /*
+         * Periksa jumlah foto setelah update.
+         */
+        $remainingPhotoCount = $activity
+            ->media
+            ->where('media_type', 'photo')
+            ->whereNotIn(
+                'id',
+                $removedMediaIds
+            )
+            ->count();
+
+        $newPhotoCount = count(
+            $request->file('photos', [])
+        );
+
+        if (
+            $remainingPhotoCount +
+            $newPhotoCount >
+            10
+        ) {
+
+            return response()->json([
+                'message' => 'Maximum 10 photos are allowed.',
+            ], 422);
+
+        }
+
+        /*
+         * Pastikan setelah update Activity masih memiliki
+         * description, photo, atau video.
+         */
+        $remainingMedia = $activity
+            ->media
+            ->whereNotIn(
+                'id',
+                $removedMediaIds
+            );
+
+        $description = trim(
+            $validated['description'] ?? ''
+        );
+
+        $hasDescription =
+        $description !== '';
+
+        $hasRemainingPhotos = $remainingMedia
+            ->where('media_type', 'photo')
+            ->isNotEmpty();
+
+        $hasRemainingVideo = $remainingMedia
+            ->where('media_type', 'video')
+            ->isNotEmpty();
+
+        $hasNewPhotos =
+            $request->hasFile('photos');
+
+        $hasNewVideo =
+            $request->hasFile('video');
+
+        if (
+            ! $hasDescription &&
+            ! $hasRemainingPhotos &&
+            ! $hasRemainingVideo &&
+            ! $hasNewPhotos &&
+            ! $hasNewVideo
+        ) {
+
+            return response()->json([
+                'message' => 'Description, photo, or video is required.',
+            ], 422);
+
+        }
+
+        if (! $activity->programCategorySessionTime) {
+
+            return response()->json([
+                'message' => 'Activity session information was not found.',
+            ], 422);
+
+        }
+
+        $disk = Storage::disk(
+            config('filesystems.default')
+        );
+
+        /*
+         * Gabungkan media yang dipilih untuk dihapus
+         * dengan video lama jika ada video pengganti.
+         */
+        $mediaIdsToDelete = $removedMediaIds;
+
+        if ($request->hasFile('video')) {
+            $existingVideoIds = $activity
+                ->media
+                ->where('media_type', 'video')
+                ->pluck('id');
+
+            $mediaIdsToDelete = $mediaIdsToDelete
+                ->merge($existingVideoIds)
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values();
+        }
+
+        /*
+         * Simpan path file lama.
+         * File fisik baru dihapus setelah transaksi berhasil.
+         */
+        $oldFilePaths = $activity
+            ->media
+            ->whereIn('id', $mediaIdsToDelete)
+            ->pluck('file_path')
+            ->filter()
+            ->unique()
+            ->values();
+
+        /*
+         * Tentukan sort order berdasarkan media yang tetap ada.
+         */
+        $remainingExistingMedia = $activity
+            ->media
+            ->whereNotIn('id', $mediaIdsToDelete);
+
+        $sortOrder = (
+            $remainingExistingMedia->max('sort_order')
+            ?? 0
+        ) + 1;
+
+        $uploadedMedia = [];
+
+        try {
+
+            // ======================
+            // UPLOAD NEW PHOTOS
+            // ======================
+
+            if ($request->hasFile('photos')) {
+                foreach (
+                    $request->file('photos') as $photo
+                ) {
+                    $fileName =
+                        Str::random(40).
+                        '.'.
+                        $photo->getClientOriginalExtension();
+
+                    /*
+                     * Ambil metadata sebelum upload.
+                     */
+                    $mimeType = $photo->getMimeType();
+                    $fileSize = $photo->getSize();
+
+                    $path = $disk->putFileAs(
+                        'montessori/activities',
+                        $photo,
+                        $fileName
+                    );
+
+                    if (! $path) {
+                        throw new \RuntimeException(
+                            'Failed to upload activity photo.'
+                        );
+                    }
+
+                    $uploadedMedia[] = [
+                        'media_type' => 'photo',
+                        'mime_type' => $mimeType,
+                        'file_name' => $fileName,
+                        'file_path' => $path,
+                        'file_size' => $fileSize,
+                        'sort_order' => $sortOrder++,
+                    ];
+                }
+            }
+
+            // ======================
+            // UPLOAD NEW VIDEO
+            // ======================
+
+            if ($request->hasFile('video')) {
+                $video = $request->file('video');
+
+                $fileName =
+                    Str::random(40).
+                    '.'.
+                    $video->getClientOriginalExtension();
+
+                $mimeType = $video->getMimeType();
+                $fileSize = $video->getSize();
+
+                $path = $disk->putFileAs(
+                    'montessori/activities',
+                    $video,
+                    $fileName
                 );
 
-                ActivityPhoto::create([
+                if (! $path) {
+                    throw new \RuntimeException(
+                        'Failed to upload activity video.'
+                    );
+                }
 
-                    'activity_id' => $activity->id,
+                $uploadedMedia[] = [
+                    'media_type' => 'video',
+                    'mime_type' => $mimeType,
+                    'file_name' => $fileName,
+                    'file_path' => $path,
+                    'file_size' => $fileSize,
+                    'sort_order' => $sortOrder++,
+                ];
+            }
+            DB::transaction(function () use (
+                $description,
+                $activity,
+                $newChildIds,
+                $mediaIdsToDelete,
+                $uploadedMedia
+            ) {
+                $oldChildIds = $activity
+                    ->children
+                    ->pluck('id')
+                    ->map(fn ($id) => (int) $id);
 
-                    'photo' => $photoPath,
+                // ======================
+                // UPDATE ACTIVITY
+                // ======================
 
+                $activity->update([
+                    'description' => $description !== ''
+                            ? $description
+                            : null,
                 ]);
+
+                // ======================
+                // SYNC CHILDREN
+                // ======================
+
+                $activity
+                    ->children()
+                    ->sync($newChildIds);
+
+                // ======================
+                // RECALCULATE ATTENDANCE
+                // ======================
+
+                $affectedChildIds = $oldChildIds
+                    ->merge($newChildIds)
+                    ->unique()
+                    ->values();
+
+                $this->recalculateAttendanceStatuses(
+                    $activity->therapy_date,
+                    $activity
+                        ->program_category_session_time_id,
+                    $affectedChildIds
+                );
+
+                // ======================
+                // DELETE OLD MEDIA RECORDS
+                // ======================
+
+                if ($mediaIdsToDelete->isNotEmpty()) {
+                    $activity
+                        ->media()
+                        ->whereIn(
+                            'id',
+                            $mediaIdsToDelete
+                        )
+                        ->delete();
+                }
+
+                // ======================
+                // CREATE NEW MEDIA RECORDS
+                // ======================
+
+                foreach ($uploadedMedia as $media) {
+                    ActivityMedia::create(
+                        array_merge(
+                            [
+                                'activity_id' => $activity->id,
+                            ],
+                            $media
+                        )
+                    );
+                }
+            });
+        } catch (\Throwable $exception) {
+
+            /*
+             * Upload atau transaksi database gagal.
+             * Bersihkan file baru yang sempat tersimpan.
+             */
+            foreach ($uploadedMedia as $media) {
+                $filePath =
+                    $media['file_path'] ?? null;
+
+                if (! $filePath) {
+                    continue;
+                }
+
+                try {
+                    if ($disk->exists($filePath)) {
+                        $disk->delete($filePath);
+                    }
+                } catch (\Throwable $cleanupException) {
+                    report($cleanupException);
+                }
+            }
+
+            throw $exception;
+        }
+
+        /*
+         * Database sudah berhasil commit.
+         * Sekarang file lama aman untuk dihapus.
+         */
+        foreach ($oldFilePaths as $filePath) {
+            try {
+                if ($disk->exists($filePath)) {
+                    $deleted = $disk->delete(
+                        $filePath
+                    );
+
+                    if (! $deleted) {
+                        report(
+                            new \RuntimeException(
+                                "Failed to delete old activity media: {$filePath}"
+                            )
+                        );
+                    }
+                }
+            } catch (\Throwable $cleanupException) {
+                /*
+                 * Jangan membatalkan update yang sudah commit.
+                 * Kegagalan ini hanya menghasilkan orphan file,
+                 * bukan record database yang rusak.
+                 */
+                report($cleanupException);
             }
         }
 
-        // ======================
-        // RESPONSE
-        // ======================
-
         return response()->json([
-            'message' => 'Activity created successfully',
-
-            'data' => $activity->load([
-                'photos',
-                'therapySession.registration.child',
-                'therapySession.registration.programs',
-                'therapySession.therapist',
-            ]),
+            'message' => 'Activity updated successfully.',
         ]);
     }
 
@@ -260,292 +861,245 @@ class ActivityController extends Controller
     {
         $this->forbidGuardian();
 
-        // ======================
-        // THERAPIST OWNERSHIP
-        // ======================
-
-        if (
-            auth()->user()->role ===
-            'therapist'
-        ) {
-
-            if (
-
-                $activity
-                    ->therapySession
-                    ->therapist_id
-
-                !==
-
-                auth()->user()
-                    ->staff
-                    ->id
-
-            ) {
-
-                abort(
-                    403,
-                    'Forbidden'
-                );
-
-            }
-
-        }
-
-        // ======================
-        // DELETE PHOTOS
-        // ======================
-
-        foreach ($activity->photos as $photo) {
-
-            Storage::delete($photo->photo);
-        }
-
-        // ======================
-        // DELETE VIDEO
-        // ======================
-
-        if ($activity->video) {
-
-            Storage::delete($activity->video);
-        }
-
-        // ======================
-        // UPDATE SESSION STATUS
-        // ======================
-
-        $activity->therapySession()->update([
-            'therapy_session_status_id' => 1,
+        $activity->load([
+            'media',
+            'children',
         ]);
 
-        // ======================
-        // DELETE ACTIVITY
-        // ======================
+        $childIds = $activity
+            ->children
+            ->pluck('id');
 
-        $activity->delete();
+        $therapyDate =
+            $activity->therapy_date;
 
-        return response()->json([
-            'message' => 'Activity deleted successfully',
-        ]);
-    }
+        $sessionTimeId =
+            $activity->program_category_session_time_id;
 
-    public function show(Activity $activity)
-    {
-        return response()->json([
-
-            'data' => $activity->load([
-                'photos',
-                'therapySession.registration.child',
-                'therapySession.registration.programs',
-                'therapySession.therapist',
-            ]),
-
-        ]);
-    }
-
-    public function update(Request $request, Activity $activity)
-    {
-
-        $this->forbidGuardian();
-
-        // ======================
-        // VALIDATION
-        // ======================
-
-        $request->validate([
-
-            'caption' => 'nullable|string',
-
-            'video' => [
-                'nullable',
-                'file',
-                'mimetypes:video/mp4,video/quicktime,video/x-msvideo',
-                'max:102400',
-            ],
-
-            'photos.*' => 'nullable|image|max:5120',
-
-        ]);
-
-        // ======================
-        // SESSION STATUS
-        // ======================
-
-        $therapySession = $activity->therapySession;
-
-        if ($therapySession->therapy_session_status_id === 3) {
-
+        if (! $sessionTimeId) {
             return response()->json([
-                'message' => 'Cannot update activity for Alpha session.',
+                'message' => 'Activity session information was not found.',
             ], 422);
         }
 
-        if (
-            auth()->user()->role ===
-            'therapist'
+        /*
+         * Simpan lokasi file sebelum record media dihapus.
+         */
+        $filePaths = $activity
+            ->media
+            ->pluck('file_path')
+            ->filter()
+            ->values();
+
+        DB::transaction(function () use (
+            $activity,
+            $childIds,
+            $therapyDate,
+            $sessionTimeId
         ) {
+            /*
+             * Hapus seluruh data database terlebih dahulu.
+             */
+            $activity->media()->delete();
+            $activity->children()->detach();
+            $activity->delete();
 
-            if (
+            /*
+             * Activity sudah tidak ada saat status attendance
+             * dihitung ulang.
+             */
+            $this->recalculateAttendanceStatuses(
+                $therapyDate,
+                $sessionTimeId,
+                $childIds
+            );
+        });
 
-                $activity
-                    ->therapySession
-                    ->therapist_id
+        /*
+         * Database transaction sudah berhasil.
+         * Baru hapus file fisik.
+         */
+        $disk = Storage::disk(
+            config('filesystems.default')
+        );
 
-                !==
-
-                auth()->user()
-                    ->staff
-                    ->id
-
-            ) {
-
-                abort(403);
-
-            }
-
-        }
-
-        // ======================
-        // UPDATE VIDEO
-        // ======================
-
-        $videoPath = $activity->video;
-
-        if ($request->hasFile('video')) {
-
-            // DELETE OLD VIDEO
-
-            if ($activity->video) {
-
-                Storage::delete($activity->video);
-            }
-
-            // STORE NEW VIDEO
-
-            $videoPath = $request
-                ->file('video')
-                ->store(
-                    'activities/videos'
-                );
-        }
-
-        // ======================
-        // UPDATE ACTIVITY
-        // ======================
-
-        $activity->update([
-
-            'caption' => $request->caption,
-
-            'video' => $videoPath,
-
-        ]);
-
-        // ======================
-        // ADD NEW PHOTOS
-        // ======================
-
-        if ($request->hasFile('photos')) {
-
-            foreach (
-                $request->file('photos') as $photo
-            ) {
-
-                $photoPath = $photo->store(
-                    'activities/photos'
-                );
-
-                ActivityPhoto::create([
-
-                    'activity_id' => $activity->id,
-
-                    'photo' => $photoPath,
-
-                ]);
+        foreach ($filePaths as $filePath) {
+            if ($disk->exists($filePath)) {
+                $disk->delete($filePath);
             }
         }
-
-        // ======================
-        // RESPONSE
-        // ======================
 
         return response()->json([
-
-            'message' => 'Activity updated successfully',
-
-            'data' => $activity->load([
-
-                'photos',
-
-                'therapySession.registration.child',
-
-                'therapySession.registration.programs',
-
-                'therapySession.therapist',
-
-            ]),
-
+            'message' => 'Activity deleted successfully.',
         ]);
     }
 
-    public function deleteVideo(Activity $activity)
+    public function children(Request $request)
     {
-
-        $this->forbidGuardian();
-
-        // ======================
-        // THERAPIST OWNERSHIP
-        // ======================
-
-        if (
-            auth()->user()->role ===
-            'therapist'
-        ) {
-
-            if (
-
-                $activity
-                    ->therapySession
-                    ->therapist_id
-
-                !==
-
-                auth()->user()
-                    ->staff
-                    ->id
-
-            ) {
-
-                abort(
-                    403,
-                    'Forbidden'
-                );
-
-            }
-
-        }
-
-        // ======================
-        // DELETE FILE
-        // ======================
-
-        if ($activity->video) {
-
-            Storage::delete($activity->video);
-        }
-
-        // ======================
-        // UPDATE DB
-        // ======================
-
-        $activity->update([
-            'video' => null,
+        $request->validate([
+            'program_category_id' => [
+                'required',
+                'exists:program_categories,id',
+            ],
         ]);
+
+        $children = Child::where('status_id', 1)
+            ->whereHas(
+                'latestRegistration',
+                function ($query) use ($request) {
+
+                    $query->where(
+                        'program_category_id',
+                        $request->program_category_id
+                    );
+
+                }
+            )
+            ->select([
+                'id',
+                'name',
+                'nickname',
+            ])
+            ->orderBy('name')
+            ->get();
 
         return response()->json([
-
-            'message' => 'Video deleted successfully',
-
+            'data' => $children,
         ]);
+    }
+
+    private function recalculateAttendanceStatuses(
+        string $therapyDate,
+        int $sessionTimeId,
+        Collection $childIds
+    ): void {
+        $childIds = $childIds
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        if ($childIds->isEmpty()) {
+            return;
+        }
+
+        $sessionTime = ProgramCategorySessionTime::find(
+            $sessionTimeId
+        );
+
+        if (! $sessionTime) {
+            return;
+        }
+
+        /*
+         * Cari anak yang masih tercantum dalam minimal
+         * satu Activity lain pada tanggal dan sesi yang sama.
+         */
+        $completedChildIds = Activity::query()
+            ->whereDate(
+                'therapy_date',
+                $therapyDate
+            )
+            ->where(
+                'program_category_session_time_id',
+                $sessionTimeId
+            )
+            ->whereHas(
+                'children',
+                function ($query) use ($childIds) {
+                    $query->whereIn(
+                        'children.id',
+                        $childIds
+                    );
+                }
+            )
+            ->with([
+                'children' => function ($query) use ($childIds) {
+                    $query
+                        ->select('children.id')
+                        ->whereIn(
+                            'children.id',
+                            $childIds
+                        );
+                },
+            ])
+            ->get()
+            ->flatMap(
+                fn ($activity) => $activity->children->pluck('id')
+            )
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        $scheduledChildIds = $childIds
+            ->diff($completedChildIds)
+            ->values();
+
+        /*
+         * Anak yang masih punya Activity:
+         * Completed.
+         */
+        if ($completedChildIds->isNotEmpty()) {
+            TherapySession::query()
+                ->whereDate(
+                    'therapy_date',
+                    $therapyDate
+                )
+                ->where(
+                    'start_time',
+                    $sessionTime->start_time
+                )
+                ->where(
+                    'end_time',
+                    $sessionTime->end_time
+                )
+                ->whereHas(
+                    'registration',
+                    function ($query) use (
+                        $completedChildIds
+                    ) {
+                        $query->whereIn(
+                            'child_id',
+                            $completedChildIds
+                        );
+                    }
+                )
+                ->update([
+                    'therapy_session_status_id' => 2,
+                ]);
+        }
+
+        /*
+         * Anak yang tidak lagi punya Activity:
+         * Scheduled.
+         */
+        if ($scheduledChildIds->isNotEmpty()) {
+            TherapySession::query()
+                ->whereDate(
+                    'therapy_date',
+                    $therapyDate
+                )
+                ->where(
+                    'start_time',
+                    $sessionTime->start_time
+                )
+                ->where(
+                    'end_time',
+                    $sessionTime->end_time
+                )
+                ->whereHas(
+                    'registration',
+                    function ($query) use (
+                        $scheduledChildIds
+                    ) {
+                        $query->whereIn(
+                            'child_id',
+                            $scheduledChildIds
+                        );
+                    }
+                )
+                ->update([
+                    'therapy_session_status_id' => 1,
+                ]);
+        }
     }
 }

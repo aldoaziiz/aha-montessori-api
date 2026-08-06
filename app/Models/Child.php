@@ -20,6 +20,7 @@ class Child extends Model
         'school_class_id',
         'school_education_id',
         'room_id',
+        'program_category_id',
     ];
 
     protected static function booted()
@@ -66,6 +67,13 @@ class Child extends Model
         return $this->hasMany(Registration::class);
     }
 
+    public function latestRegistration()
+    {
+        return $this->hasOne(
+            Registration::class
+        )->latestOfMany();
+    }
+
     public function guardians()
     {
         return $this->belongsToMany(Guardian::class, 'child_guardians')
@@ -77,5 +85,20 @@ class Child extends Model
     public function room()
     {
         return $this->belongsTo(Room::class);
+    }
+
+    public function activities()
+    {
+        return $this->belongsToMany(
+            Activity::class,
+            'activity_children'
+        )->withTimestamps();
+    }
+
+    public function programCategory()
+    {
+        return $this->belongsTo(
+            ProgramCategory::class
+        );
     }
 }

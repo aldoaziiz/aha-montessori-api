@@ -343,14 +343,24 @@ Route::middleware([
         [TherapySessionController::class, 'markAlpha']
     );
 
-    Route::apiResource(
-        'therapy-sessions',
-        TherapySessionController::class
+    Route::patch(
+        '/therapy-sessions/{therapySession}/status',
+        [TherapySessionController::class, 'updateStatus']
+    );
+
+    Route::get(
+        '/program-category-session-times',
+        [ProgramCategorySessionTimeController::class, 'index']
+    );
+
+    Route::get(
+        '/therapy-sessions/activity-children',
+        [TherapySessionController::class, 'activityChildren']
     );
 
     Route::apiResource(
-        'activities',
-        ActivityController::class
+        'therapy-sessions',
+        TherapySessionController::class
     );
 
     Route::post(
@@ -412,6 +422,31 @@ Route::middleware([
     // ACTIVITY
     // ======================
 
+    Route::apiResource(
+        'activities',
+        ActivityController::class
+    );
+
+    Route::get(
+        '/activities/{activity}',
+        [ActivityController::class, 'show']
+    );
+
+    Route::get(
+        '/activities/children',
+        [ActivityController::class, 'children']
+    );
+
+    Route::post(
+        'activities',
+        [ActivityController::class, 'store']
+    );
+
+    Route::put(
+        '/activities/{activity}',
+        [ActivityController::class, 'update']
+    );
+
     Route::delete(
         '/activity-photos/{activityPhoto}',
         [ActivityPhotoController::class, 'destroy']
@@ -420,6 +455,11 @@ Route::middleware([
     Route::delete(
         '/activities/{activity}/video',
         [ActivityController::class, 'deleteVideo']
+    );
+
+    Route::delete(
+        '/activities/{activity}',
+        [ActivityController::class, 'destroy']
     );
 
     // ======================

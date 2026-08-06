@@ -372,6 +372,9 @@ class RegistrationController extends Controller
 
                     'child_id' => $child->id,
 
+                    'program_category_id' => $request->registration['program_category_id']
+                        ?? null,
+
                     'program_id' => $request->registration['program_id']
                         ?? null,
 
@@ -445,6 +448,28 @@ class RegistrationController extends Controller
                 }
             }
 
+            // ======================
+            // 7. UPDATE CHILD
+            // PROGRAM CATEGORY
+            // ======================
+
+            $firstProgram = $registration
+                ->registrationPrograms()
+                ->with('program')
+                ->first();
+
+            if ($firstProgram?->program) {
+
+                $child->update([
+
+                    'program_category_id' => $firstProgram
+                        ->program
+                        ->program_category_id,
+
+                ]);
+
+            }
+
             return response()->json([
 
                 'message' => 'Registration created successfully',
@@ -510,6 +535,7 @@ class RegistrationController extends Controller
 
             $registration->update([
                 'clinic_id' => $validated['clinic_id'],
+                'program_category_id' => $validated['program_category_id'],
                 'program_id' => $validated['program_ids'][0],
                 'payer_id' => $validated['payer_id'] ?? null,
             ]);
@@ -596,6 +622,8 @@ class RegistrationController extends Controller
 
             'programs.category',
 
+            'programCategory',
+
             'payer',
 
             'clinic',
@@ -616,9 +644,7 @@ class RegistrationController extends Controller
 
                 ...$registration->toArray(),
 
-                'program_category' => optional(
-                    $registration->programs->first()
-                )->category,
+                'program_category' => $registration->programCategory,
 
                 'program_ids' => $registration
                     ->programs

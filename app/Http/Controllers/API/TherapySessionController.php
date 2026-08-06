@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Models\Child;
 use App\Models\ProgramCategorySessionTime;
 use App\Models\Registration;
 use App\Models\Staff;
@@ -49,7 +50,6 @@ class TherapySessionController extends Controller
             'therapySessionStatus',
             'registration.child',
             'registration.programs',
-            'activity.photos',
         ]);
 
         // ======================
@@ -154,15 +154,6 @@ class TherapySessionController extends Controller
                 'therapy_session_status_id',
                 $request->therapy_session_status_id
             );
-        }
-
-        // ======================
-        // WITHOUT ACTIVITY
-        // ======================
-
-        if ($request->without_activity) {
-
-            $query->whereDoesntHave('activity');
         }
 
         // ======================
@@ -893,6 +884,119 @@ class TherapySessionController extends Controller
                 'therapist',
                 'therapySessionStatus',
             ]),
+        ]);
+    }
+
+    public function updateStatus(
+        Request $request,
+        TherapySession $therapySession
+    ) {
+        $this->forbidNonAdmin();
+
+        $validated = $request->validate([
+            'therapy_session_status_id' => [
+                'required',
+                'exists:therapy_session_statuses,id',
+            ],
+        ]);
+
+        $therapySession->update([
+            'therapy_session_status_id' => $validated['therapy_session_status_id'],
+        ]);
+
+        return response()->json([
+            'message' => 'Attendance updated successfully.',
+            'data' => $therapySession->fresh([
+                'therapySessionStatus',
+            ]),
+        ]);
+    }
+
+    public function activityOptions(Request $request)
+    {
+        $validated = $request->validate([
+
+            'program_category_id' => [
+                'required',
+                'exists:program_categories,id',
+            ],
+
+            'therapy_date' => [
+                'nullable',
+                'date',
+            ],
+
+        ]);
+
+        $therapyDate = $validated['therapy_date']
+            ?? now()->toDateString();
+
+        $sessions = TherapySession::query()
+
+            ->select([
+                'therapy_date',
+                'start_time',
+                'end_time',
+            ])
+
+            ->whereDate(
+                'therapy_date',
+                $therapyDate
+            )
+
+            ->whereHas('registration.programs', function ($query) use ($validated) {
+
+                $query->where(
+                    'program_category_id',
+                    $validated['program_category_id']
+                );
+
+            })
+
+            ->groupBy(
+                'therapy_date',
+                'start_time',
+                'end_time'
+            )
+
+            ->orderBy('therapy_date')
+
+            ->orderBy('start_time')
+
+            ->get();
+
+        return response()->json([
+            'data' => $sessions,
+        ]);
+    }
+
+    public function activityChildren(Request $request)
+    {
+        $validated = $request->validate([
+
+            'program_category_id' => [
+                'required',
+                'exists:program_categories,id',
+            ],
+        ]);
+
+        $children = Child::query()
+            ->where(
+                'status_id',
+                1
+            )
+            ->where(
+                'program_category_id',
+                $validated['program_category_id']
+            )
+            ->orderBy('name')
+            ->get([
+                'id',
+                'name',
+            ]);
+
+        return response()->json([
+            'data' => $children,
         ]);
     }
 }

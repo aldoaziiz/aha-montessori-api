@@ -296,7 +296,7 @@ class BillingController extends Controller
             $path = $request
                 ->file('receipt')
                 ->store(
-                    'payment-receipts',
+                    'montessori/payment-receipts',
                 );
 
             // ======================

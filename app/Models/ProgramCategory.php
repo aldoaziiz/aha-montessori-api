@@ -28,4 +28,11 @@ class ProgramCategory extends Model
         )
             ->orderBy('session_order');
     }
+
+    public function activities()
+    {
+        return $this->hasMany(
+            Activity::class
+        );
+    }
 }

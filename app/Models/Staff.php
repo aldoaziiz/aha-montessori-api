@@ -37,4 +37,11 @@ class Staff extends Model
             User::class
         );
     }
+
+    public function activities()
+    {
+        return $this->hasMany(
+            Activity::class
+        );
+    }
 }
