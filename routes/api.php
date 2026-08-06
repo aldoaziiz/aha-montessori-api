@@ -4,6 +4,7 @@ use App\Http\Controllers\API\ActivityController;
 use App\Http\Controllers\API\ActivityPhotoController;
 use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\API\BillingController;
+use App\Http\Controllers\API\BillingReportController;
 use App\Http\Controllers\API\ChildController;
 use App\Http\Controllers\API\ChildGuardianController;
 use App\Http\Controllers\API\CityController;
@@ -416,6 +417,18 @@ Route::middleware([
     Route::post(
         '/billings/{id}/cancel',
         [BillingController::class, 'cancel']
+    );
+
+    // ======================
+    // REPORTS
+    // ======================
+
+    Route::get(
+        '/reports/billing',
+        [
+            BillingReportController::class,
+            'index',
+        ]
     );
 
     // ======================
