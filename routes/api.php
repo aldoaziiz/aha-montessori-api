@@ -465,6 +465,11 @@ Route::middleware([
         [ActivityPhotoController::class, 'destroy']
     );
 
+    Route::get(
+        '/activity-media/{activityMedia}/download',
+        [ActivityController::class, 'downloadMedia']
+    );
+
     Route::delete(
         '/activities/{activity}/video',
         [ActivityController::class, 'deleteVideo']

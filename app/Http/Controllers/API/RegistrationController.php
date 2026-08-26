@@ -169,7 +169,11 @@ class RegistrationController extends Controller
             // VALIDATION
             // ======================
 
-            $rules = [];
+            $rules = [
+                'child.allergy_history' => ['nullable', 'string'],
+                'child.special_condition' => ['nullable', 'string'],
+                'child.under_therapy' => ['nullable', 'string'],
+            ];
 
             if (
                 ! isset(

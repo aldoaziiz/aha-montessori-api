@@ -10,6 +10,8 @@ class Activity extends Model
     use HasFactory;
 
     protected $fillable = [
+        'activity_content_type_id',
+
         'program_category_id',
 
         'therapy_date',
@@ -25,6 +27,14 @@ class Activity extends Model
     {
         return $this->belongsTo(
             ProgramCategory::class
+        );
+    }
+
+    public function contentType()
+    {
+        return $this->belongsTo(
+            ActivityContentType::class,
+            'activity_content_type_id'
         );
     }
 

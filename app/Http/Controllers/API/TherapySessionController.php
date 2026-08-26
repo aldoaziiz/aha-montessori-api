@@ -993,6 +993,7 @@ class TherapySessionController extends Controller
             ->get([
                 'id',
                 'name',
+                'nickname',
             ]);
 
         return response()->json([

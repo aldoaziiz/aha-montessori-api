@@ -46,6 +46,7 @@ class ActivityController extends Controller
         );
 
         $query = Activity::with([
+            'contentType:id,name',
             'programCategory:id,name',
             'programCategorySessionTime:id,session_name,start_time,end_time',
             'staff:id,name',
@@ -108,6 +109,11 @@ class ActivityController extends Controller
             'program_category_id' => [
                 'required',
                 'exists:program_categories,id',
+            ],
+
+            'activity_content_type_id' => [
+                'required',
+                'exists:activity_content_types,id',
             ],
 
             'therapy_date' => [
@@ -301,6 +307,8 @@ class ActivityController extends Controller
                 $uploadedMedia
             ) {
                 $activity = Activity::create([
+                    'activity_content_type_id' => $validated['activity_content_type_id'],
+
                     'program_category_id' => $validated['program_category_id'],
 
                     'therapy_date' => $validated['therapy_date'],
@@ -385,6 +393,8 @@ class ActivityController extends Controller
             'media',
 
             'programCategory',
+
+            'contentType',
 
             'programCategorySessionTime',
 
@@ -932,6 +942,50 @@ class ActivityController extends Controller
         return response()->json([
             'message' => 'Activity deleted successfully.',
         ]);
+    }
+
+    public function downloadMedia(ActivityMedia $activityMedia)
+    {
+        $user = auth()->user();
+
+        if ($user->role === 'guardian') {
+            $guardian = $user->guardian;
+
+            $canDownload = $guardian && $activityMedia
+                ->activity()
+                ->whereHas(
+                    'children',
+                    function ($query) use ($guardian) {
+                        $query->whereHas(
+                            'guardians',
+                            function ($guardianQuery) use ($guardian) {
+                                $guardianQuery->where(
+                                    'guardians.id',
+                                    $guardian->id
+                                );
+                            }
+                        );
+                    }
+                )
+                ->exists();
+
+            if (! $canDownload) {
+                abort(403, 'Forbidden');
+            }
+        }
+
+        $disk = Storage::disk(
+            config('filesystems.default')
+        );
+
+        if (! $disk->exists($activityMedia->file_path)) {
+            abort(404, 'Activity media file was not found.');
+        }
+
+        return $disk->download(
+            $activityMedia->file_path,
+            $activityMedia->file_name ?: 'activity-media-'.$activityMedia->id
+        );
     }
 
     public function children(Request $request)

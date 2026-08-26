@@ -28,6 +28,9 @@ class PublicRegistrationController extends Controller
                 'child.name' => 'required|string|max:255',
                 'child.id_number' => 'required|string|max:255',
                 'child.birth_date' => 'required|date',
+                'child.allergy_history' => 'nullable|string',
+                'child.special_condition' => 'nullable|string',
+                'child.under_therapy' => 'nullable|string',
 
                 'guardian.name' => 'required|string|max:255',
                 'guardian.email' => 'required|email',

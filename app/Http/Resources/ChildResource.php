@@ -22,6 +22,9 @@ class ChildResource extends JsonResource
             'gender' => $this->gender,
             'phone' => $this->phone,
             'address' => $this->address,
+            'allergy_history' => $this->allergy_history,
+            'special_condition' => $this->special_condition,
+            'under_therapy' => $this->under_therapy,
             'created_at' => $this->created_at,
 
             'status' => $this->whenLoaded('status', function () {

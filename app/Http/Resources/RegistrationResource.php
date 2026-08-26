@@ -23,6 +23,9 @@ class RegistrationResource extends JsonResource
                 'id' => $this->child->id,
                 'name' => $this->child->name,
                 'birth_date' => $this->child->birth_date,
+                'allergy_history' => $this->child->allergy_history,
+                'special_condition' => $this->child->special_condition,
+                'under_therapy' => $this->child->under_therapy,
 
                 'guardians' => $this->child->guardians->map(function ($g) {
                     $role = GuardianRole::find($g->pivot->guardian_role_id);

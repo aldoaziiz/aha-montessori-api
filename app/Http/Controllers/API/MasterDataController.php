@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityContentType;
 use App\Models\City;
 use App\Models\Clinic;
 use App\Models\GuardianRole;
@@ -20,6 +21,9 @@ class MasterDataController extends Controller
     public function index()
     {
         return response()->json([
+
+            'activity_content_types' => ActivityContentType::orderBy('id')
+                ->get(),
 
             'cities' => City::orderBy('name', 'asc')
                 ->get(),
