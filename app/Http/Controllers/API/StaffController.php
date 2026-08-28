@@ -210,20 +210,21 @@ class StaffController extends Controller
 
         $validated = $request->validate([
 
-            'name' => 'required|string|max:255',
+            'name' => 'sometimes|required|string|max:255',
 
             'email' => [
+                'sometimes',
                 'required',
                 'email',
                 Rule::unique('users', 'email')
                     ->ignore($staff->user_id),
             ],
 
-            'phone' => 'required|string|max:255',
+            'phone' => 'sometimes|required|string|max:255',
 
             'address' => 'nullable|string',
 
-            'staff_role_id' => 'required|exists:staff_roles,id',
+            'staff_role_id' => 'sometimes|required|exists:staff_roles,id',
 
             'status_id' => 'nullable|exists:statuses,id',
 
@@ -235,7 +236,7 @@ class StaffController extends Controller
 
         $staffRole =
             StaffRole::find(
-                $validated['staff_role_id']
+                $staff->staff_role_id
             );
 
         $staffRoleName =
