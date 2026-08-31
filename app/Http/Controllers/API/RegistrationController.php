@@ -530,7 +530,7 @@ class RegistrationController extends Controller
 
                 'payer_id' => 'nullable|exists:payers,id',
 
-                'program_duration_months' => 'required|integer|in:6,12',
+                'program_duration_months' => 'required|integer|min:1|max:12',
             ]);
 
             // ======================
