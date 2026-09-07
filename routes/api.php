@@ -319,6 +319,16 @@ Route::middleware([
         [TherapySessionController::class, 'generate']
     );
 
+    Route::post(
+        '/therapy-sessions/bulk-validate',
+        [TherapySessionController::class, 'bulkValidate']
+    );
+
+    Route::post(
+        '/therapy-sessions/bulk',
+        [TherapySessionController::class, 'bulkStore']
+    );
+
     Route::get(
         'therapy-sessions/availability',
         [TherapySessionController::class, 'availability']
