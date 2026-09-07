@@ -57,7 +57,7 @@ class RegistrationController extends Controller
     {
         $query = Registration::with([
             'child.guardians',
-            'programs',
+            'programs.category',
             'billing.paymentStatus',
         ]);
 

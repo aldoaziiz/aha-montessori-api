@@ -31,7 +31,7 @@ class MasterDataController extends Controller
             'clinics' => Clinic::orderBy('name')
                 ->get(),
 
-            'guardian_roles' => GuardianRole::orderBy('name')
+            'guardian_roles' => GuardianRole::orderBy('id', 'asc')
                 ->get(),
 
             'payers' => Payer::orderBy('name')

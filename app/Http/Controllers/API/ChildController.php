@@ -43,6 +43,22 @@ class ChildController extends Controller
             );
         }
 
+        if ($request->program_category_id) {
+
+            $query->where(
+                'program_category_id',
+                $request->program_category_id
+            );
+        }
+
+        if ($request->gender) {
+
+            $query->where(
+                'gender',
+                $request->gender
+            );
+        }
+
         // ======================
         // SORTING
         // ======================
