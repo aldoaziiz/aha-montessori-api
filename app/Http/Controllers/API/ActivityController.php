@@ -1118,7 +1118,8 @@ class ActivityController extends Controller
                     }
                 )
                 ->update([
-                    'therapy_session_status_id' => 2,
+                    'therapy_session_status_id' => TherapySession::STATUS_COMPLETED,
+                    'uses_session' => true,
                 ]);
         }
 
@@ -1152,7 +1153,8 @@ class ActivityController extends Controller
                     }
                 )
                 ->update([
-                    'therapy_session_status_id' => 1,
+                    'therapy_session_status_id' => TherapySession::STATUS_SCHEDULED,
+                    'uses_session' => false,
                 ]);
         }
     }

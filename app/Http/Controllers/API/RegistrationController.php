@@ -452,6 +452,8 @@ class RegistrationController extends Controller
                 }
             }
 
+            $registration->syncSessionEntitlement();
+
             // ======================
             // 7. UPDATE CHILD
             // PROGRAM CATEGORY
@@ -567,6 +569,8 @@ class RegistrationController extends Controller
 
                 ]);
             }
+
+            $registration->syncSessionEntitlement();
 
             return response()->json([
 

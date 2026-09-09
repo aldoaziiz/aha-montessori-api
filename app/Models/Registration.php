@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 class Registration extends Model
 {
@@ -15,6 +16,15 @@ class Registration extends Model
         'payer_id',
         'room_id',
         'program_category_id',
+        'total_session',
+        'session_started_at',
+        'session_expired_at',
+    ];
+
+    protected $casts = [
+        'total_session' => 'integer',
+        'session_started_at' => 'date',
+        'session_expired_at' => 'date',
     ];
 
     public function child()
@@ -75,5 +85,74 @@ class Registration extends Model
         return $this->belongsTo(
             ProgramCategory::class
         );
+    }
+
+    public function calculateTotalSession(): int
+    {
+        $this->loadMissing('programs');
+
+        return (int) $this->programs->sum(function ($program) {
+            return (int) $program->session_count
+                * (int) $program->pivot->learning_period_months;
+        });
+    }
+
+    public function syncSessionEntitlement(): void
+    {
+        $startedAt = $this->created_at
+            ? Carbon::parse($this->created_at)->startOfDay()
+            : now()->startOfDay();
+
+        $this->forceFill([
+            'total_session' => $this->calculateTotalSession(),
+            'session_started_at' => $startedAt->toDateString(),
+            'session_expired_at' => $startedAt->copy()->addYear()->toDateString(),
+        ])->save();
+    }
+
+    public function getUsedSessionCount(): int
+    {
+        if ($this->relationLoaded('therapySessions')) {
+            return $this->therapySessions->where('uses_session', true)->count();
+        }
+
+        return $this->therapySessions()
+            ->where('uses_session', true)
+            ->count();
+    }
+
+    public function isSessionExpired(): bool
+    {
+        if (! $this->session_expired_at) {
+            return false;
+        }
+
+        return now()->startOfDay()->gt($this->session_expired_at);
+    }
+
+    public function getRemainingSessionCount(): int
+    {
+        if ($this->isSessionExpired()) {
+            return 0;
+        }
+
+        return max(((int) $this->total_session) - $this->getUsedSessionCount(), 0);
+    }
+
+    public function getSessionSummaryAttribute(): array
+    {
+        $usedSession = $this->getUsedSessionCount();
+        $isExpired = $this->isSessionExpired();
+
+        return [
+            'total_session' => (int) $this->total_session,
+            'used_session' => $usedSession,
+            'remaining_session' => $isExpired
+                ? 0
+                : max(((int) $this->total_session) - $usedSession, 0),
+            'session_started_at' => $this->session_started_at,
+            'session_expired_at' => $this->session_expired_at,
+            'is_session_expired' => $isExpired,
+        ];
     }
 }

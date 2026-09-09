@@ -6,10 +6,17 @@ use Illuminate\Database\Eloquent\Model;
 
 class TherapySession extends Model
 {
+    public const STATUS_SCHEDULED = 1;
+
+    public const STATUS_COMPLETED = 2;
+
+    public const STATUS_ALPHA = 3;
+
     protected $fillable = [
         'registration_id',
         'therapist_id',
         'therapy_session_status_id',
+        'uses_session',
         'room_id',
         'therapy_date',
         'start_time',
@@ -17,6 +24,15 @@ class TherapySession extends Model
         'notes',
         'allow_late_activity',
     ];
+
+    protected $casts = [
+        'uses_session' => 'boolean',
+    ];
+
+    public static function usesSessionForStatus(int $statusId): bool
+    {
+        return $statusId === self::STATUS_COMPLETED;
+    }
 
     // ======================
     // RELATIONS

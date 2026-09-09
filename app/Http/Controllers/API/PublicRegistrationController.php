@@ -226,6 +226,8 @@ class PublicRegistrationController extends Controller
                 }
             }
 
+            $registration->syncSessionEntitlement();
+
             return response()->json([
 
                 'message' => 'Registration created successfully',
