@@ -23,6 +23,7 @@ use App\Http\Controllers\API\RoomController;
 use App\Http\Controllers\API\SchoolClassController;
 use App\Http\Controllers\API\SchoolController;
 use App\Http\Controllers\API\SchoolEducationController;
+use App\Http\Controllers\API\SchoolScheduleController;
 use App\Http\Controllers\API\StaffController;
 use App\Http\Controllers\API\StaffRoleController;
 use App\Http\Controllers\API\TherapySessionController;
@@ -191,6 +192,21 @@ Route::middleware([
         [AuthController::class, 'changePassword']
     );
 
+    Route::get(
+        '/school-schedule/context',
+        [SchoolScheduleController::class, 'context']
+    );
+
+    Route::get(
+        '/school-schedule/calendar',
+        [SchoolScheduleController::class, 'calendar']
+    );
+
+    Route::post(
+        '/school-schedule/submissions',
+        [SchoolScheduleController::class, 'submit']
+    );
+
     // ======================
     // MASTER DATA
     // ======================
@@ -312,6 +328,11 @@ Route::middleware([
     Route::apiResource(
         'registrations',
         RegistrationController::class
+    );
+
+    Route::patch(
+        '/registrations/{registration}/status',
+        [RegistrationController::class, 'updateStatus']
     );
 
     Route::post(

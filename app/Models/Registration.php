@@ -7,8 +7,21 @@ use Illuminate\Support\Carbon;
 
 class Registration extends Model
 {
+    public const STATUS_ACTIVE = 'active';
+
+    public const STATUS_INACTIVE = 'inactive';
+
+    public const STATUS_CLOSED = 'closed';
+
+    public const STATUSES = [
+        self::STATUS_ACTIVE,
+        self::STATUS_INACTIVE,
+        self::STATUS_CLOSED,
+    ];
+
     protected $fillable = [
         'registration_number',
+        'registration_status',
         'child_id',
         'clinic_id',
         'complaint',
@@ -61,6 +74,11 @@ class Registration extends Model
     public function therapySessions()
     {
         return $this->hasMany(TherapySession::class);
+    }
+
+    public function schoolScheduleSubmissions()
+    {
+        return $this->hasMany(SchoolScheduleSubmission::class);
     }
 
     public function registrationPrograms()
@@ -128,6 +146,20 @@ class Registration extends Model
         }
 
         return now()->startOfDay()->gt($this->session_expired_at);
+    }
+
+    public function canScheduleSessions(): bool
+    {
+        return $this->registration_status === self::STATUS_ACTIVE;
+    }
+
+    public function getRegistrationStatusLabelAttribute(): string
+    {
+        return match ($this->registration_status) {
+            self::STATUS_INACTIVE => 'Inactive',
+            self::STATUS_CLOSED => 'Closed',
+            default => 'Active',
+        };
     }
 
     public function getRemainingSessionCount(): int

@@ -391,7 +391,10 @@ class TherapySessionController extends Controller
         $errors = [];
         foreach ($dates as $field => $date) {
             $message = null;
-            if (! $registration->session_started_at || ! $registration->session_expired_at) {
+            if (! $registration->canScheduleSessions()) {
+                $message = 'This registration is '.$registration->registration_status_label
+                    .'. New scheduling is not allowed.';
+            } elseif (! $registration->session_started_at || ! $registration->session_expired_at) {
                 $message = 'Session validity dates have not been set for this registration.';
             } elseif ($registration->isSessionExpired()) {
                 $message = 'Sessions for this registration have expired. New scheduling is not allowed.';

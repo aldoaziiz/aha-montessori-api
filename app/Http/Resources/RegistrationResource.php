@@ -19,6 +19,8 @@ class RegistrationResource extends JsonResource
         return [
             'id' => $this->id,
             'registration_number' => $this->registration_number,
+            'registration_status' => $this->registration_status,
+            'registration_status_label' => $this->registration_status_label,
             'created_at' => $this->created_at,
             'total_session' => $this->total_session,
             'session_started_at' => $this->session_started_at?->toDateString(),

@@ -24,6 +24,7 @@ class GenerateSessionsTest extends TestCase
         $this->assertSame(':memory:', DB::connection()->getDatabaseName());
         Schema::create('registrations', function (Blueprint $table) {
             $table->id();
+            $table->string('registration_status')->default(Registration::STATUS_ACTIVE);
             $table->unsignedInteger('total_session')->nullable();
             $table->date('session_started_at')->nullable();
             $table->date('session_expired_at')->nullable();
@@ -258,6 +259,47 @@ class GenerateSessionsTest extends TestCase
         $single['notes'] = 'Historical note';
         $this->putJson('/test-session/1', $single)->assertOk();
         $this->assertSame('Historical note', TherapySession::first()->notes);
+        $this->assertSame(1, TherapySession::count());
+    }
+
+    public function test_inactive_and_closed_registrations_block_scheduling_but_allow_notes(): void
+    {
+        $this->seedSession('2026-09-01');
+
+        foreach ([Registration::STATUS_INACTIVE, Registration::STATUS_CLOSED] as $status) {
+            DB::table('registrations')->update(['registration_status' => $status]);
+
+            $single = [
+                'registration_id' => 1,
+                'session_time_id' => 1,
+                'therapy_date' => '2026-09-08',
+                'start_time' => '08:00:00',
+                'end_time' => '09:30:00',
+            ];
+
+            $this->postJson('/test-single', $single)
+                ->assertUnprocessable()
+                ->assertJsonPath(
+                    'message',
+                    'This registration is '.ucfirst($status).'. New scheduling is not allowed.'
+                );
+            $bulk = [
+                'registration_id' => 1,
+                'sessions' => [[
+                    'therapy_date' => '2026-09-08',
+                    'session_time_id' => 1,
+                ]],
+            ];
+            $this->postJson('/test-bulk-validate', $bulk)->assertUnprocessable();
+            $this->postJson('/test-bulk', $bulk)->assertUnprocessable();
+            $this->postJson('/test-generate', $this->payload())->assertUnprocessable();
+
+            $single['therapy_date'] = '2026-09-01';
+            $single['notes'] = ucfirst($status).' historical note';
+            $this->putJson('/test-session/1', $single)->assertOk();
+            $this->assertSame($single['notes'], TherapySession::findOrFail(1)->notes);
+        }
+
         $this->assertSame(1, TherapySession::count());
     }
 

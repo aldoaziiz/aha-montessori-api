@@ -20,6 +20,7 @@ use App\Services\Auth\CreateGuardianUserService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class RegistrationController extends Controller
 {
@@ -108,6 +109,15 @@ class RegistrationController extends Controller
 
                 $query->orderBy(
                     'registrations.registration_number',
+                    $sortOrder
+                );
+
+                break;
+
+            case 'registration_status':
+
+                $query->orderBy(
+                    'registrations.registration_status',
                     $sortOrder
                 );
 
@@ -497,6 +507,31 @@ class RegistrationController extends Controller
         ])->findOrFail($id);
 
         return new RegistrationResource($data);
+    }
+
+    public function updateStatus(Request $request, Registration $registration)
+    {
+        $this->forbidNonAdmin();
+
+        $validated = $request->validate([
+            'registration_status' => [
+                'required',
+                Rule::in(Registration::STATUSES),
+            ],
+        ]);
+
+        $registration->update([
+            'registration_status' => $validated['registration_status'],
+        ]);
+
+        return response()->json([
+            'message' => 'Registration status updated successfully.',
+            'data' => [
+                'id' => $registration->id,
+                'registration_status' => $registration->registration_status,
+                'registration_status_label' => $registration->registration_status_label,
+            ],
+        ]);
     }
 
     public function update(Request $request, $id)
