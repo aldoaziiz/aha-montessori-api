@@ -4,6 +4,7 @@ namespace App\Services\Auth;
 
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
+use InvalidArgumentException;
 
 class CreateGuardianUserService
 {
@@ -12,6 +13,10 @@ class CreateGuardianUserService
         string $email,
         string $phone
     ): User {
+
+        if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new InvalidArgumentException('Guardian email is invalid.');
+        }
 
         // ======================
         // CHECK EXISTING USER

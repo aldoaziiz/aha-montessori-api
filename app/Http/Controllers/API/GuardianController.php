@@ -69,9 +69,9 @@ class GuardianController extends Controller
         $guardian = Guardian::create($validated);
 
         $user = (new CreateGuardianUserService)->execute(
-            $guardian->name,
-            $guardian->email,
-            $guardian->phone
+            name: $guardian->name,
+            email: $guardian->email,
+            phone: $guardian->phone
         );
 
         $guardian->update([

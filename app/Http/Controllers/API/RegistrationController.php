@@ -308,9 +308,9 @@ class RegistrationController extends Controller
 
                 $user =
                     $userService->execute(
-                        $guardian->email,
-                        $guardian->name,
-                        $guardian->phone
+                        name: $guardian->name,
+                        email: $guardian->email,
+                        phone: $guardian->phone
                     );
 
                 $guardian->update([
