@@ -17,9 +17,9 @@ use Illuminate\Validation\Rule;
 
 class ActivityController extends Controller
 {
-    private function forbidGuardian()
+    private function authorizeActivityManager(): void
     {
-        if (auth()->user()->role === 'guardian') {
+        if (! in_array(auth()->user()->role, ['admin', 'teacher'], true)) {
             abort(403, 'Forbidden');
         }
     }
@@ -102,7 +102,7 @@ class ActivityController extends Controller
 
     public function store(Request $request)
     {
-        $this->forbidGuardian();
+        $this->authorizeActivityManager();
 
         $validated = $request->validate([
 
@@ -384,7 +384,7 @@ class ActivityController extends Controller
 
     public function show(Activity $activity)
     {
-        $this->forbidGuardian();
+        $this->authorizeActivityManager();
 
         $activity->load([
 
@@ -411,7 +411,7 @@ class ActivityController extends Controller
         Request $request,
         Activity $activity
     ) {
-        $this->forbidGuardian();
+        $this->authorizeActivityManager();
 
         $activity->load([
             'children',
@@ -869,7 +869,7 @@ class ActivityController extends Controller
 
     public function destroy(Activity $activity)
     {
-        $this->forbidGuardian();
+        $this->authorizeActivityManager();
 
         $activity->load([
             'media',

@@ -39,21 +39,6 @@ class RegistrationController extends Controller
         }
     }
 
-    private function forbidTherapist()
-    {
-        if (
-            auth()->user()->role ===
-            'therapist'
-        ) {
-
-            abort(
-                403,
-                'Forbidden'
-            );
-
-        }
-    }
-
     public function index(Request $request)
     {
         $query = Registration::with([

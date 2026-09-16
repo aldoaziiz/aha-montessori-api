@@ -29,21 +29,6 @@ class BillingController extends Controller
         }
     }
 
-    private function forbidTherapist()
-    {
-        if (
-            auth()->user()->role ===
-            'therapist'
-        ) {
-
-            abort(
-                403,
-                'Forbidden'
-            );
-
-        }
-    }
-
     public function show($id)
     {
         $billing = Billing::with([

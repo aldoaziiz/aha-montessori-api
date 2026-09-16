@@ -92,7 +92,7 @@ class StaffController extends Controller
         // DETERMINE ROLE
         // ======================
 
-        $role = 'staff';
+        $role = 'teacher';
 
         if ($validated['staff_role_id']) {
 
@@ -105,19 +105,6 @@ class StaffController extends Controller
                 strtolower(
                     $staffRole?->name ?? ''
                 );
-
-            if (
-
-                str_contains(
-                    $staffRoleName,
-                    'therapist'
-                )
-
-            ) {
-
-                $role = 'therapist';
-
-            }
 
             if (
 
@@ -232,7 +219,7 @@ class StaffController extends Controller
 
         $staff->update($validated);
 
-        $role = 'staff';
+        $role = 'teacher';
 
         $staffRole =
             StaffRole::find(
@@ -243,17 +230,6 @@ class StaffController extends Controller
             strtolower(
                 $staffRole?->name ?? ''
             );
-
-        if (
-            str_contains(
-                $staffRoleName,
-                'therapist'
-            )
-        ) {
-
-            $role = 'therapist';
-
-        }
 
         if (
             str_contains(

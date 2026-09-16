@@ -54,12 +54,12 @@ class TherapySessionController extends Controller
         ]);
 
         // ======================
-        // THERAPIST FILTER
+        // TEACHER FILTER
         // ======================
 
         if (
             $user->role ===
-            'therapist'
+            'teacher'
         ) {
 
             $query->where(
@@ -70,12 +70,12 @@ class TherapySessionController extends Controller
         }
 
         // ======================
-        // THERAPIST TODAY ONLY
+        // TEACHER TODAY ONLY
         // ======================
 
         if (
             $user->role ===
-            'therapist' &&
+            'teacher' &&
             $request->without_activity
         ) {
 
@@ -1020,13 +1020,8 @@ class TherapySessionController extends Controller
         $therapistId = $request->therapist_id;
 
         $therapists = Staff::query()
-            ->whereHas('staffRole', function ($q) {
-
-                $q->where(
-                    'name',
-                    'Therapist'
-                );
-
+            ->whereHas('user', function ($query) {
+                $query->where('role', 'teacher');
             });
 
         if ($therapistId) {
