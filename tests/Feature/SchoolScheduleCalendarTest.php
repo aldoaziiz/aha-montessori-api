@@ -45,6 +45,17 @@ class SchoolScheduleCalendarTest extends TestCase
             $table->date('session_expired_at')->nullable();
             $table->timestamps();
         });
+        Schema::create('programs', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('program_category_id')->nullable();
+        });
+        Schema::create('registration_programs', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('registration_id');
+            $table->unsignedBigInteger('program_id');
+            $table->decimal('price', 12, 2)->default(0);
+            $table->unsignedInteger('learning_period_months')->nullable();
+        });
         Schema::create('program_category_session_times', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('program_category_id');
@@ -96,7 +107,7 @@ class SchoolScheduleCalendarTest extends TestCase
                 'registration_number' => 'REG-ALYA-001',
                 'registration_status' => 'active',
                 'child_id' => 1,
-                'program_category_id' => 1,
+                'program_category_id' => null,
                 'total_session' => 6,
                 'session_started_at' => '2026-09-01',
                 'session_expired_at' => '2027-09-01',
@@ -111,6 +122,16 @@ class SchoolScheduleCalendarTest extends TestCase
                 'session_started_at' => '2026-09-01',
                 'session_expired_at' => '2027-09-01',
             ],
+        ]);
+        DB::table('programs')->insert([
+            'id' => 1,
+            'program_category_id' => 1,
+        ]);
+        DB::table('registration_programs')->insert([
+            'registration_id' => 1,
+            'program_id' => 1,
+            'price' => 800000,
+            'learning_period_months' => 6,
         ]);
         DB::table('program_category_session_times')->insert([
             [

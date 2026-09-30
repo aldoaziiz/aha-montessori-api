@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\Auth\CreateGuardianUserService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class PublicRegistrationController extends Controller
 {
@@ -38,9 +39,37 @@ class PublicRegistrationController extends Controller
                 'guardian.guardian_role_id' => 'required|integer',
 
                 'registration.program_ids' => 'required|array|min:1',
+                'registration.program_ids.*' => 'required|integer|distinct|exists:programs,id',
+                'registration.program_category_id' => 'required|integer|exists:program_categories,id',
+                'registration.program_duration_months' => 'required|integer|min:1|max:12',
                 'registration.payer_id' => 'required',
 
             ]);
+
+            $programIds = collect($request->registration['program_ids'])
+                ->map(fn ($programId) => (int) $programId)
+                ->values();
+            $programsById = Program::query()
+                ->whereIn('id', $programIds)
+                ->get()
+                ->keyBy('id');
+            $programCategoryIds = $programsById
+                ->pluck('program_category_id')
+                ->filter()
+                ->map(fn ($categoryId) => (int) $categoryId)
+                ->unique()
+                ->values();
+            $selectedProgramCategoryId = (int) $request->registration['program_category_id'];
+
+            if (
+                $programsById->count() !== $programIds->count()
+                || $programCategoryIds->count() !== 1
+                || $programCategoryIds->first() !== $selectedProgramCategoryId
+            ) {
+                throw ValidationException::withMessages([
+                    'registration.program_ids' => 'Every selected program must belong to the selected program category.',
+                ]);
+            }
 
             // ======================
             // CHECK EMAIL
@@ -163,6 +192,8 @@ class PublicRegistrationController extends Controller
                         ?? $request->registration['program_id']
                         ?? null,
 
+                    'program_category_id' => $selectedProgramCategoryId,
+
                     'payer_id' => $request->registration['payer_id']
                         ?? null,
 
@@ -186,12 +217,7 @@ class PublicRegistrationController extends Controller
                     $request->registration['program_ids'] as $programId
                 ) {
 
-                    $program =
-                        Program::find($programId);
-
-                    if (! $program) {
-                        continue;
-                    }
+                    $program = $programsById->get((int) $programId);
 
                     RegistrationProgram::create([
                         'registration_id' => $registration->id,
@@ -227,6 +253,9 @@ class PublicRegistrationController extends Controller
             }
 
             $registration->syncSessionEntitlement();
+            $child->update([
+                'program_category_id' => $selectedProgramCategoryId,
+            ]);
 
             return response()->json([
 

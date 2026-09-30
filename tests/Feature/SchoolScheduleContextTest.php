@@ -41,6 +41,10 @@ class SchoolScheduleContextTest extends TestCase
             $table->id();
             $table->string('name');
         });
+        Schema::create('programs', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('program_category_id')->nullable();
+        });
         Schema::create('registrations', function (Blueprint $table) {
             $table->id();
             $table->string('registration_number');
@@ -56,6 +60,13 @@ class SchoolScheduleContextTest extends TestCase
             $table->id();
             $table->unsignedBigInteger('registration_id');
             $table->boolean('uses_session')->default(false);
+        });
+        Schema::create('registration_programs', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('registration_id');
+            $table->unsignedBigInteger('program_id');
+            $table->decimal('price', 12, 2)->default(0);
+            $table->unsignedInteger('learning_period_months')->nullable();
         });
 
         DB::table('guardians')->insert([
@@ -74,13 +85,17 @@ class SchoolScheduleContextTest extends TestCase
             'id' => 1,
             'name' => 'Toddler',
         ]);
+        DB::table('programs')->insert([
+            'id' => 1,
+            'program_category_id' => 1,
+        ]);
         DB::table('registrations')->insert([
             [
                 'id' => 1,
                 'registration_number' => 'REG-ALYA-001',
                 'registration_status' => 'active',
                 'child_id' => 1,
-                'program_category_id' => 1,
+                'program_category_id' => null,
                 'total_session' => 10,
                 'session_started_at' => '2026-09-01',
                 'session_expired_at' => '2027-09-01',
@@ -108,6 +123,12 @@ class SchoolScheduleContextTest extends TestCase
                 'session_expired_at' => '2027-09-01',
                 'created_at' => '2026-09-01 08:00:00',
             ],
+        ]);
+        DB::table('registration_programs')->insert([
+            'registration_id' => 1,
+            'program_id' => 1,
+            'price' => 800000,
+            'learning_period_months' => 6,
         ]);
         DB::table('therapy_sessions')->insert([
             ['registration_id' => 1, 'uses_session' => true],

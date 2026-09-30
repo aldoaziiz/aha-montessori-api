@@ -32,6 +32,8 @@ class SchoolScheduleController extends Controller
             ->with([
                 'child:id,name,nickname',
                 'programCategory:id,name',
+                'programs:id,program_category_id',
+                'programs.category:id,name',
                 'therapySessions:id,registration_id,uses_session',
             ])
             ->join('children', 'registrations.child_id', '=', 'children.id')
@@ -44,6 +46,11 @@ class SchoolScheduleController extends Controller
             ->get()
             ->map(function (Registration $registration) {
                 $summary = $registration->session_summary;
+                $programCategoryId = $this->resolveProgramCategoryId($registration);
+                $programCategory = $registration->programCategory
+                    ?? $registration->programs
+                        ->firstWhere('program_category_id', $programCategoryId)
+                        ?->category;
 
                 return [
                     'id' => $registration->id,
@@ -58,9 +65,9 @@ class SchoolScheduleController extends Controller
                         'name' => $registration->child->name,
                         'nickname' => $registration->child->nickname,
                     ],
-                    'program_category' => $registration->programCategory ? [
-                        'id' => $registration->programCategory->id,
-                        'name' => $registration->programCategory->name,
+                    'program_category' => $programCategory ? [
+                        'id' => $programCategory->id,
+                        'name' => $programCategory->name,
                     ] : null,
                     'session_summary' => [
                         'total_session' => $summary['total_session'],
@@ -93,7 +100,10 @@ class SchoolScheduleController extends Controller
         abort_if(! $guardian, 404, 'Registration not found.');
 
         $registration = Registration::query()
-            ->with('therapySessions')
+            ->with([
+                'programs:id,program_category_id',
+                'therapySessions',
+            ])
             ->whereKey($validated['registration_id'])
             ->whereHas('child.guardians', function ($query) use ($guardian) {
                 $query->where('guardians.id', $guardian->id);
@@ -129,8 +139,9 @@ class SchoolScheduleController extends Controller
             ]);
         }
 
+        $programCategoryId = $this->resolveProgramCategoryId($registration);
         $allSessionTimes = ProgramCategorySessionTime::query()
-            ->where('program_category_id', $registration->program_category_id)
+            ->where('program_category_id', $programCategoryId)
             ->orderBy('session_order')
             ->get();
         $sessionTimes = $allSessionTimes
@@ -356,10 +367,12 @@ class SchoolScheduleController extends Controller
                 ->orderBy('id')
                 ->get()
                 ->keyBy('id');
+            $programCategoryId = $this->resolveProgramCategoryId($registration);
 
             $rows = collect($validated['sessions'])
                 ->map(function (array $session, int $index) use (
                     $registration,
+                    $programCategoryId,
                     $sessionTimes,
                     $monthStart,
                     $monthEnd
@@ -390,7 +403,7 @@ class SchoolScheduleController extends Controller
                     $sessionTime = $sessionTimes->get($session['session_time_id']);
                     if (
                         ! $sessionTime
-                        || (int) $sessionTime->program_category_id !== (int) $registration->program_category_id
+                        || (int) $sessionTime->program_category_id !== $programCategoryId
                         || ! $sessionTime->is_active
                     ) {
                         throw ValidationException::withMessages([
@@ -614,6 +627,26 @@ class SchoolScheduleController extends Controller
             substr($startTime, 0, 8),
             substr($endTime, 0, 8),
         ]);
+    }
+
+    private function resolveProgramCategoryId(Registration $registration): ?int
+    {
+        if ($registration->program_category_id) {
+            return (int) $registration->program_category_id;
+        }
+
+        $categoryIds = $registration->relationLoaded('programs')
+            ? $registration->programs->pluck('program_category_id')
+            : $registration->programs()->pluck('programs.program_category_id');
+        $categoryIds = $categoryIds
+            ->filter()
+            ->map(fn ($categoryId) => (int) $categoryId)
+            ->unique()
+            ->values();
+
+        return $categoryIds->count() === 1
+            ? $categoryIds->first()
+            : null;
     }
 
     private function therapySessionStatusLabel(int $statusId): string

@@ -45,6 +45,17 @@ class SchoolScheduleSubmissionTest extends TestCase
             $table->date('session_expired_at')->nullable();
             $table->timestamps();
         });
+        Schema::create('programs', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('program_category_id')->nullable();
+        });
+        Schema::create('registration_programs', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('registration_id');
+            $table->unsignedBigInteger('program_id');
+            $table->decimal('price', 12, 2)->default(0);
+            $table->unsignedInteger('learning_period_months')->nullable();
+        });
         Schema::create('program_category_session_times', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('program_category_id');
@@ -113,6 +124,16 @@ class SchoolScheduleSubmissionTest extends TestCase
                 'session_started_at' => '2026-09-01',
                 'session_expired_at' => '2027-09-01',
             ],
+        ]);
+        DB::table('programs')->insert([
+            'id' => 1,
+            'program_category_id' => 1,
+        ]);
+        DB::table('registration_programs')->insert([
+            'registration_id' => 1,
+            'program_id' => 1,
+            'price' => 800000,
+            'learning_period_months' => 6,
         ]);
         DB::table('program_category_session_times')->insert([
             [
@@ -331,6 +352,24 @@ class SchoolScheduleSubmissionTest extends TestCase
     {
         DB::table('registrations')->where('id', 1)->update([
             'session_expired_at' => '2026-09-16',
+        ]);
+        $payload = $this->payload();
+        $payload['sessions'] = [$payload['sessions'][0]];
+        $this->actingAs($this->user(10, 'guardian'));
+
+        $this->postJson('/test-school-schedule-submissions', $payload)
+            ->assertCreated();
+
+        $this->assertDatabaseHas('therapy_sessions', [
+            'registration_id' => 1,
+            'therapy_date' => '2026-09-16',
+        ]);
+    }
+
+    public function test_legacy_registration_uses_its_program_category_for_submission(): void
+    {
+        DB::table('registrations')->where('id', 1)->update([
+            'program_category_id' => null,
         ]);
         $payload = $this->payload();
         $payload['sessions'] = [$payload['sessions'][0]];
