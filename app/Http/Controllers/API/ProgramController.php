@@ -177,6 +177,7 @@ class ProgramController extends Controller
             'payer_id' => 'required|exists:payers,id',
             'description' => 'nullable|string',
             'price' => 'nullable|numeric',
+            'session_count' => 'sometimes|required|integer|min:0',
             'order_number' => 'nullable|integer',
             'clinic_id' => 'nullable|exists:clinics,id',
             'program_category_id' => 'nullable|exists:program_categories,id',
