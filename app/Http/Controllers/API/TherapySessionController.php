@@ -11,6 +11,7 @@ use App\Models\TherapySession;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -34,10 +35,7 @@ class TherapySessionController extends Controller
     public function index(Request $request)
     {
         $user = auth()->user();
-        if (
-            $user->role ===
-            'guardian'
-        ) {
+        if (! in_array($user->role, ['admin', 'teacher'], true)) {
 
             abort(
                 403,
@@ -50,23 +48,24 @@ class TherapySessionController extends Controller
             'therapist.staffRole',
             'therapySessionStatus',
             'registration.child',
-            'registration.programs',
+            'registration.programs.category',
+            'registration.programCategory',
         ]);
 
-        // ======================
-        // TEACHER FILTER
-        // ======================
+        $request->validate([
+            'program_category_id' => 'nullable|integer|exists:program_categories,id',
+        ]);
 
-        if (
-            $user->role ===
-            'teacher'
-        ) {
-
-            $query->where(
-                'therapist_id',
-                $user->staff->id
-            );
-
+        if ($request->filled('program_category_id')) {
+            $categoryId = (int) $request->program_category_id;
+            $query->whereHas('registration', function ($registration) use ($categoryId) {
+                $registration->where('program_category_id', $categoryId)
+                    ->orWhere(function ($legacy) use ($categoryId) {
+                        $legacy->whereNull('program_category_id')
+                            ->whereHas('programs', fn ($program) => $program->where('program_category_id', $categoryId))
+                            ->whereDoesntHave('programs', fn ($program) => $program->where('program_category_id', '!=', $categoryId));
+                    });
+            });
         }
 
         // ======================
@@ -171,15 +170,58 @@ class TherapySessionController extends Controller
         if ($request->registration_id) {
 
             return response()->json([
-                'data' => $query->get(),
+                'data' => $this->withSessionLabels($query->get()),
             ]);
         }
 
         $data = $query->paginate(
             $request->per_page ?? 10
         );
+        $data->setCollection($this->withSessionLabels($data->getCollection()));
 
         return response()->json($data);
+    }
+
+    private function withSessionLabels(Collection $sessions): Collection
+    {
+        foreach ($sessions as $session) {
+            $registration = $session->registration;
+            $category = $registration?->programCategory;
+
+            // Legacy registrations may only have a category through their programs.
+            if ($registration && ! $registration->program_category_id) {
+                $categories = $registration->programs->pluck('category')->filter()->unique('id');
+                $category = $categories->count() === 1 ? $categories->first() : null;
+            }
+
+            $session->setAttribute('program_category', $category ? [
+                'id' => $category->id,
+                'name' => $category->name,
+            ] : null);
+        }
+
+        $slotKey = fn ($categoryId, $start, $end) => implode('|', [
+            $categoryId, substr((string) $start, 0, 5), substr((string) $end, 0, 5),
+        ]);
+        // Include inactive slots so existing schedules keep their session names.
+        $sessionTimes = ProgramCategorySessionTime::whereIn(
+            'program_category_id',
+            $sessions->pluck('program_category.id')->filter()->unique()
+        )->orderBy('id')->get()->groupBy(
+            fn ($slot) => $slotKey($slot->program_category_id, $slot->start_time, $slot->end_time)
+        );
+
+        foreach ($sessions as $session) {
+            $matches = $sessionTimes->get($slotKey(
+                $session->program_category['id'] ?? null,
+                $session->start_time,
+                $session->end_time
+            ), collect());
+            $names = $matches->pluck('session_name')->unique();
+            $session->setAttribute('session_name', $names->count() === 1 ? $names->first() : null);
+        }
+
+        return $sessions;
     }
 
     public function store(Request $request)
