@@ -69,7 +69,7 @@ return [
             'endpoint' => env('AWS_ENDPOINT'),
             'url' => env('AWS_URL'),
             'use_path_style_endpoint' => false,
-            'throw' => false,
+            'throw' => true,
         ],
 
     ],
