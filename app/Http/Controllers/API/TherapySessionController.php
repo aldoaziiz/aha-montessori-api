@@ -1106,6 +1106,7 @@ class TherapySessionController extends Controller
         $sessions = TherapySession::with([
             'registration.child',
             'registration.programs.category',
+            'registration.programCategory',
         ])
             ->whereBetween('therapy_date', [
                 $validated['start_date'],
@@ -1116,13 +1117,18 @@ class TherapySessionController extends Controller
             ->get();
 
         return $sessions->map(function ($session) {
+            $registration = $session->registration;
+            $category = $registration?->programCategory;
 
-            $therapyProgram = $session
-                ->registration
-                ->programs
-                ->first(function ($program) {
-                    return $program->session_count > 0;
-                });
+            if ($registration && ! $category) {
+                $categories = $registration->programs
+                    ->pluck('category')
+                    ->filter()
+                    ->unique('id');
+                $category = $categories->count() === 1
+                    ? $categories->first()
+                    : null;
+            }
 
             return [
 
@@ -1134,11 +1140,11 @@ class TherapySessionController extends Controller
 
                 'end_time' => substr($session->end_time, 0, 5),
 
-                'child_name' => $session->registration->child->name,
+                'child_id' => $registration?->child_id,
 
-                'program_category' => optional(
-                    $therapyProgram?->category
-                )->name,
+                'child_name' => $registration?->child?->name,
+
+                'program_category' => $category?->name,
 
                 'therapy_session_status_id' => $session->therapy_session_status_id,
 
