@@ -328,11 +328,15 @@ class ActivityController extends Controller
                     ->children()
                     ->attach($children->all());
 
-                $this->recalculateAttendanceStatuses(
-                    $activity->therapy_date,
-                    $activity->program_category_session_time_id,
-                    $children
-                );
+                // Only observations count as attendance. Activities still keep
+                // their child/date/session links, but must not change session usage.
+                if ($this->isObservation($activity)) {
+                    $this->recalculateAttendanceStatuses(
+                        $activity->therapy_date,
+                        $activity->program_category_session_time_id,
+                        $children
+                    );
+                }
 
                 /*
                  * File sudah berhasil diunggah.
@@ -416,6 +420,7 @@ class ActivityController extends Controller
         $activity->load([
             'children',
             'media',
+            'contentType',
             'programCategorySessionTime',
         ]);
 
@@ -771,12 +776,14 @@ class ActivityController extends Controller
                     ->unique()
                     ->values();
 
-                $this->recalculateAttendanceStatuses(
-                    $activity->therapy_date,
-                    $activity
-                        ->program_category_session_time_id,
-                    $affectedChildIds
-                );
+                if ($this->isObservation($activity)) {
+                    $this->recalculateAttendanceStatuses(
+                        $activity->therapy_date,
+                        $activity
+                            ->program_category_session_time_id,
+                        $affectedChildIds
+                    );
+                }
 
                 // ======================
                 // DELETE OLD MEDIA RECORDS
@@ -874,7 +881,10 @@ class ActivityController extends Controller
         $activity->load([
             'media',
             'children',
+            'contentType',
         ]);
+
+        $isObservation = $this->isObservation($activity);
 
         $childIds = $activity
             ->children
@@ -905,7 +915,8 @@ class ActivityController extends Controller
             $activity,
             $childIds,
             $therapyDate,
-            $sessionTimeId
+            $sessionTimeId,
+            $isObservation
         ) {
             /*
              * Hapus seluruh data database terlebih dahulu.
@@ -915,14 +926,16 @@ class ActivityController extends Controller
             $activity->delete();
 
             /*
-             * Activity sudah tidak ada saat status attendance
+             * Observation sudah tidak ada saat status attendance
              * dihitung ulang.
              */
-            $this->recalculateAttendanceStatuses(
-                $therapyDate,
-                $sessionTimeId,
-                $childIds
-            );
+            if ($isObservation) {
+                $this->recalculateAttendanceStatuses(
+                    $therapyDate,
+                    $sessionTimeId,
+                    $childIds
+                );
+            }
         });
 
         /*
@@ -1046,7 +1059,7 @@ class ActivityController extends Controller
 
         /*
          * Cari anak yang masih tercantum dalam minimal
-         * satu Activity lain pada tanggal dan sesi yang sama.
+         * satu Observation pada tanggal dan sesi yang sama.
          */
         $completedChildIds = Activity::query()
             ->whereDate(
@@ -1057,6 +1070,9 @@ class ActivityController extends Controller
                 'program_category_session_time_id',
                 $sessionTimeId
             )
+            ->whereHas('contentType', function ($query) {
+                $query->whereRaw('UPPER(name) = ?', ['OBSERVATION']);
+            })
             ->whereHas(
                 'children',
                 function ($query) use ($childIds) {
@@ -1089,7 +1105,7 @@ class ActivityController extends Controller
             ->values();
 
         /*
-         * Anak yang masih punya Activity:
+         * Anak yang masih punya Observation:
          * Completed.
          */
         if ($completedChildIds->isNotEmpty()) {
@@ -1124,7 +1140,7 @@ class ActivityController extends Controller
         }
 
         /*
-         * Anak yang tidak lagi punya Activity:
+         * Anak yang tidak lagi punya Observation:
          * Scheduled.
          */
         if ($scheduledChildIds->isNotEmpty()) {
@@ -1157,5 +1173,12 @@ class ActivityController extends Controller
                     'uses_session' => false,
                 ]);
         }
+    }
+
+    private function isObservation(Activity $activity): bool
+    {
+        $contentTypeName = $activity->contentType?->name;
+
+        return strtoupper(trim((string) $contentTypeName)) === 'OBSERVATION';
     }
 }
