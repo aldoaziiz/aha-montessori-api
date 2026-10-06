@@ -160,6 +160,67 @@ th {
 	padding-top: 10px;
 }
 
+.invoice-notes {
+	width: 100%;
+	margin-top: 18px;
+	padding: 10px 12px;
+	border: 1px solid #ddd;
+	background: #fafafa;
+	font-size: 10px;
+	page-break-inside: avoid;
+}
+
+.invoice-notes-table {
+	width: 100%;
+	border: none;
+	border-collapse: collapse;
+}
+
+.invoice-notes-table td {
+	width: 50%;
+	padding: 0 10px 0 0;
+	border: none;
+	vertical-align: top;
+}
+
+.invoice-notes-table td:last-child {
+	padding-right: 0;
+	padding-left: 10px;
+	border-left: 1px solid #ddd;
+}
+
+.invoice-notes-title {
+	margin-bottom: 6px;
+	color: #2F5597;
+	font-size: 11px;
+	font-weight: bold;
+}
+
+.payment-details p {
+	margin: 3px 0;
+}
+
+.terms-list {
+	margin: 0;
+	padding-left: 16px;
+}
+
+.terms-list li {
+	margin-bottom: 4px;
+}
+
+.invoice-contact {
+	margin: 9px 0 0;
+	padding-top: 7px;
+	border-top: 1px solid #ddd;
+	line-height: 1.4;
+}
+
+.invoice-contact a {
+	color: #2F5597;
+	text-decoration: none;
+}
+
 .footer {
 	margin-top: 50px;
 	font-size: 11px;
@@ -389,6 +450,32 @@ th {
 
 </table>
 
+<div class="invoice-notes">
+    <table class="invoice-notes-table">
+        <tr>
+            <td class="payment-details">
+                <div class="invoice-notes-title">Informasi Pembayaran</div>
+                <p><strong>Bank:</strong> BNI</p>
+                <p><strong>No. Rekening:</strong> 1982335396</p>
+                <p><strong>Atas Nama:</strong> Fitria Ayu Rahmawati</p>
+            </td>
+            <td>
+                <div class="invoice-notes-title">Syarat dan Ketentuan</div>
+                <ol class="terms-list">
+                    <li>Masa berlaku biaya registrasi adalah 1 (satu) tahun terhitung sejak tanggal registrasi.</li>
+                    <li>Pembayaran dilakukan melalui rekening BNI yang tercantum pada bagian Informasi Pembayaran.</li>
+                </ol>
+            </td>
+        </tr>
+    </table>
+
+    <p class="invoice-contact">
+        Jika Ayah/Bunda memiliki pertanyaan, silakan hubungi kami melalui WhatsApp di
+        <a href="https://wa.me/628115410354">+62 811-5410-354</a>.
+        Kami dengan senang hati siap membantu. Terima kasih atas kepercayaan Ayah/Bunda kepada AHA! Montessori.
+    </p>
+</div>
+
 <div class="footer">
 
     <div style="text-align: right; margin-bottom: 40px;">
@@ -406,14 +493,7 @@ th {
 
     <div class="footer-note">
 
-        <strong>
-            Thank you for your trust.
-        </strong>
-
-        <br>
-
-        This invoice is generated electronically by
-        AHA! Montessori.
+        Invoice ini dibuat secara elektronik oleh AHA! Montessori.
 
     </div>
 
