@@ -184,6 +184,20 @@ class ProgramController extends Controller
             'status_id' => 'nullable|exists:statuses,id',
         ]);
 
+        if (
+            array_key_exists('program_category_id', $validated)
+            && $validated['program_category_id'] !== null
+            && (int) $validated['program_category_id'] !== (int) $program->program_category_id
+            && $program->registrations()
+                ->whereNull('registrations.program_category_id')
+                ->whereHas('therapySessions')
+                ->exists()
+        ) {
+            return response()->json([
+                'message' => 'The program category cannot be changed while legacy registrations have therapy sessions attached.',
+            ], 422);
+        }
+
         $program->update($validated);
 
         return response()->json([

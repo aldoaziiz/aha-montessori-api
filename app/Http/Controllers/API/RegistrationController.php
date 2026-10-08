@@ -526,6 +526,7 @@ class RegistrationController extends Controller
         return DB::transaction(function () use ($request, $id) {
 
             $registration = Registration::with('billing')
+                ->lockForUpdate()
                 ->findOrFail($id);
 
             // ======================
@@ -554,6 +555,15 @@ class RegistrationController extends Controller
 
                 'program_duration_months' => 'required|integer|min:1|max:12',
             ]);
+
+            if (
+                (int) $registration->program_category_id !== (int) $validated['program_category_id']
+                && $registration->therapySessions()->exists()
+            ) {
+                return response()->json([
+                    'message' => 'The program category cannot be changed while therapy sessions are attached to this registration.',
+                ], 422);
+            }
 
             // ======================
             // UPDATE REGISTRATION

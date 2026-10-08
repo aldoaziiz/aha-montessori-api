@@ -8,6 +8,7 @@ use App\Models\ProgramCategorySessionTime;
 use App\Models\Registration;
 use App\Models\Staff;
 use App\Models\TherapySession;
+use App\Services\TherapySessionSlotAvailability;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Http\Request;
@@ -17,6 +18,10 @@ use Illuminate\Validation\ValidationException;
 
 class TherapySessionController extends Controller
 {
+    public function __construct(
+        private readonly TherapySessionSlotAvailability $slotAvailability
+    ) {}
+
     private function forbidNonAdmin()
     {
         if (
@@ -250,6 +255,7 @@ class TherapySessionController extends Controller
                 $validated,
                 true
             );
+            $this->slotAvailability->assertSlotUsableForRegistration($registration, $sessionTime, 'session_time_id');
 
             $row = [
                 'row' => 1,
@@ -311,21 +317,21 @@ class TherapySessionController extends Controller
 
         $validated = $this->validateBulkSessionRequest($request);
 
+        $registration = Registration::with('programs')->findOrFail($validated['registration_id']);
         $this->validateSessionDates(
-            Registration::findOrFail($validated['registration_id']),
+            $registration,
             collect($validated['sessions'])->mapWithKeys(fn ($row, $index) => [
                 "sessions.$index.therapy_date" => $row['therapy_date'],
             ])->all()
         );
 
-        $rows = $this->prepareBulkSessionRows($validated);
+        $rows = $this->prepareBulkSessionRows($validated, $registration);
 
         $conflicts = $this->getSessionCreateConflicts(
             (int) $validated['registration_id'],
             $rows
         );
 
-        $registration = Registration::findOrFail($validated['registration_id']);
         $entitlementError = empty($conflicts)
             ? $this->getScheduledSessionEntitlementError($registration, count($rows))
             : null;
@@ -347,7 +353,7 @@ class TherapySessionController extends Controller
         $validated = $this->validateBulkSessionRequest($request);
 
         $result = DB::transaction(function () use ($validated) {
-            $registration = Registration::lockForUpdate()->findOrFail($validated['registration_id']);
+            $registration = Registration::with('programs')->lockForUpdate()->findOrFail($validated['registration_id']);
             $this->validateSessionDates(
                 $registration,
                 collect($validated['sessions'])->mapWithKeys(fn ($row, $index) => [
@@ -355,7 +361,7 @@ class TherapySessionController extends Controller
                 ])->all()
             );
 
-            $rows = $this->prepareBulkSessionRows($validated, true);
+            $rows = $this->prepareBulkSessionRows($validated, $registration, true);
 
             $this->lockRelatedSessionTimeSlots($rows);
 
@@ -500,7 +506,11 @@ class TherapySessionController extends Controller
         ]);
     }
 
-    private function prepareBulkSessionRows(array $validated, bool $lockSessionTimes = false): array
+    private function prepareBulkSessionRows(
+        array $validated,
+        Registration $registration,
+        bool $lockSessionTimes = false
+    ): array
     {
         $sessionTimeIds = collect($validated['sessions'])
             ->pluck('session_time_id')
@@ -517,12 +527,18 @@ class TherapySessionController extends Controller
         $sessionTimes = $sessionTimesQuery->get()->keyBy('id');
 
         return collect($validated['sessions'])
-            ->map(function ($row, $index) use ($sessionTimes) {
+            ->map(function ($row, $index) use ($sessionTimes, $registration) {
                 $sessionTime = $sessionTimes->get($row['session_time_id']);
 
                 if (! $sessionTime) {
                     abort(422, 'Selected session time is invalid.');
                 }
+
+                $this->slotAvailability->assertSlotUsableForRegistration(
+                    $registration,
+                    $sessionTime,
+                    "sessions.$index.session_time_id"
+                );
 
                 return [
                     'row' => $index + 1,
@@ -549,11 +565,7 @@ class TherapySessionController extends Controller
             return $sessionTimeQuery->findOrFail($validated['session_time_id']);
         }
 
-        $programCategoryId = $registration->programs->first()?->program_category_id;
-
-        if (! $programCategoryId) {
-            abort(422, 'Program category is required to resolve session time.');
-        }
+        $programCategoryId = $this->slotAvailability->categoryIdFor($registration);
 
         $sessionTime = $sessionTimeQuery
             ->where('program_category_id', $programCategoryId)
@@ -583,7 +595,7 @@ class TherapySessionController extends Controller
                 $row['therapy_date'],
                 $sessionTime->start_time,
                 $sessionTime->end_time
-            );
+            ).'|'.$sessionTime->program_category_id;
 
             if (isset($submittedRegistrationSlots[$slotKey])) {
                 $conflicts[] = $this->makeSessionConflict(
@@ -617,16 +629,11 @@ class TherapySessionController extends Controller
             }
 
             if (! array_key_exists($slotKey, $slotCounts)) {
-                $slotCountQuery = TherapySession::whereDate(
-                    'therapy_date',
-                    $row['therapy_date']
-                )
-                    ->whereTime('start_time', $sessionTime->start_time)
-                    ->whereTime('end_time', $sessionTime->end_time);
-
-                $slotCounts[$slotKey] = $lockConflicts
-                    ? $slotCountQuery->lockForUpdate()->get(['id'])->count()
-                    : $slotCountQuery->count();
+                $slotCounts[$slotKey] = $this->slotAvailability->countOccupancy(
+                    $row['therapy_date'],
+                    $sessionTime,
+                    $lockConflicts
+                );
             }
 
             if ($slotCounts[$slotKey] >= $sessionTime->capacity) {
@@ -680,15 +687,6 @@ class TherapySessionController extends Controller
     {
         $this->forbidNonAdmin();
 
-        $session = TherapySession::findOrFail($id);
-
-        // LOCK
-        if ($session->activity) {
-            return response()->json([
-                'message' => 'Completed sessions cannot be edited.',
-            ], 422);
-        }
-
         $validated = $request->validate([
             'therapist_id' => 'nullable|exists:staff,id',
             'therapy_date' => 'required|date',
@@ -697,51 +695,106 @@ class TherapySessionController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $scheduleChanged = Carbon::parse($session->therapy_date)->toDateString()
-            !== Carbon::parse($validated['therapy_date'])->toDateString()
-            || Carbon::parse($session->start_time)->format('H:i:s') !== Carbon::parse($validated['start_time'])->format('H:i:s')
-            || Carbon::parse($session->end_time)->format('H:i:s') !== Carbon::parse($validated['end_time'])->format('H:i:s');
-        if ($scheduleChanged) {
-            $this->validateSessionDates($session->registration, ['therapy_date' => $validated['therapy_date']]);
-        }
+        return DB::transaction(function () use ($validated, $id) {
+            $session = TherapySession::query()->lockForUpdate()->findOrFail($id);
 
-        $duplicate = TherapySession::where(
-            'registration_id',
-            $session->registration_id
-        )
-            ->where('id', '!=', $session->id)
-            ->whereDate('therapy_date', $validated['therapy_date'])
-            ->where('start_time', $validated['start_time'])
-            ->where('end_time', $validated['end_time'])
-            ->exists();
+            if ($session->activity) {
+                return response()->json([
+                    'message' => 'Completed sessions cannot be edited.',
+                ], 422);
+            }
 
-        if ($duplicate) {
+            $registration = Registration::with('programs')->lockForUpdate()->findOrFail(
+                $session->registration_id
+            );
+            $targetDate = Carbon::parse($validated['therapy_date'])->toDateString();
+            $targetStart = Carbon::parse($validated['start_time'])->format('H:i:s');
+            $targetEnd = Carbon::parse($validated['end_time'])->format('H:i:s');
+            $scheduleChanged = Carbon::parse($session->therapy_date)->toDateString() !== $targetDate
+                || Carbon::parse($session->start_time)->format('H:i:s') !== $targetStart
+                || Carbon::parse($session->end_time)->format('H:i:s') !== $targetEnd;
+
+            if ($scheduleChanged) {
+                $this->validateSessionDates($registration, ['therapy_date' => $targetDate]);
+            }
+
+            $duplicate = TherapySession::query()
+                ->where('registration_id', $session->registration_id)
+                ->where('id', '!=', $session->id)
+                ->whereDate('therapy_date', $targetDate)
+                ->whereTime('start_time', $targetStart)
+                ->whereTime('end_time', $targetEnd)
+                ->exists();
+
+            if ($duplicate) {
+                return response()->json([
+                    'message' => 'This session already exists.',
+                ], 422);
+            }
+
+            if ($scheduleChanged) {
+                $categoryId = $this->slotAvailability->categoryIdFor($registration, 'start_time');
+                $targetSlots = ProgramCategorySessionTime::query()
+                    ->where('program_category_id', $categoryId)
+                    ->whereTime('start_time', $targetStart)
+                    ->whereTime('end_time', $targetEnd)
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($targetSlots->count() !== 1) {
+                    throw ValidationException::withMessages([
+                        'start_time' => 'The selected time is not a valid session for this program category.',
+                    ]);
+                }
+
+                $sessionTime = $targetSlots->first();
+                $this->slotAvailability->assertSlotUsableForRegistration(
+                    $registration,
+                    $sessionTime,
+                    'start_time'
+                );
+                $row = ['therapy_date' => $targetDate, 'session_time' => $sessionTime];
+                $this->lockRelatedSessionTimeSlots([$row]);
+                $occupied = $this->slotAvailability->countOccupancy(
+                    $targetDate,
+                    $sessionTime,
+                    true,
+                    (int) $session->id
+                );
+
+                if ((int) $sessionTime->capacity <= 0 || $occupied >= (int) $sessionTime->capacity) {
+                    return response()->json([
+                        'message' => 'This session slot is full.',
+                        'conflicts' => [[
+                            'type' => 'slot_full',
+                            'therapy_date' => $targetDate,
+                            'session_name' => $sessionTime->session_name,
+                            'start_time' => substr((string) $sessionTime->start_time, 0, 5),
+                            'end_time' => substr((string) $sessionTime->end_time, 0, 5),
+                            'occupied' => $occupied,
+                            'capacity' => (int) $sessionTime->capacity,
+                        ]],
+                    ], 422);
+                }
+            }
+
+            $session->update([
+                'therapist_id' => null,
+                'therapy_date' => $targetDate,
+                'start_time' => $targetStart,
+                'end_time' => $targetEnd,
+                'notes' => $validated['notes'] ?? null,
+            ]);
+
             return response()->json([
-                'message' => 'This session already exists.',
-            ], 422);
-        }
-
-        $session->update([
-
-            'therapist_id' => null,
-
-            'therapy_date' => $validated['therapy_date'],
-
-            'start_time' => $validated['start_time'],
-
-            'end_time' => $validated['end_time'],
-
-            'notes' => $validated['notes'] ?? null,
-
-        ]);
-
-        return response()->json([
-            'message' => 'Session updated successfully.',
-            'data' => $session->fresh([
-                'therapist',
-                'therapySessionStatus',
-            ]),
-        ]);
+                'message' => 'Session updated successfully.',
+                'data' => $session->fresh([
+                    'therapist',
+                    'therapySessionStatus',
+                ]),
+            ]);
+        }, 3);
     }
 
     public function destroy($id)
@@ -807,6 +860,14 @@ class TherapySessionController extends Controller
 
             if (empty($generatedSchedules)) {
                 return response()->json(['message' => 'No new sessions match the selected dates and weekly schedule.'], 422);
+            }
+
+            foreach ($generatedSchedules as $schedule) {
+                $this->slotAvailability->assertSlotUsableForRegistration(
+                    $registration,
+                    $schedule['session_time'],
+                    'schedule_configs'
+                );
             }
 
             $this->lockSessionTimesForSchedules($generatedSchedules);
@@ -914,27 +975,7 @@ class TherapySessionController extends Controller
 
     private function lockRelatedSessionTimeSlots(array $rows): void
     {
-        $lockedSlotKeys = [];
-
-        foreach ($rows as $row) {
-            $sessionTime = $row['session_time'];
-            $slotKey = $this->makeSessionSlotKey(
-                '1970-01-01',
-                $sessionTime->start_time,
-                $sessionTime->end_time
-            );
-
-            if (isset($lockedSlotKeys[$slotKey])) {
-                continue;
-            }
-
-            $lockedSlotKeys[$slotKey] = true;
-
-            ProgramCategorySessionTime::whereTime('start_time', $sessionTime->start_time)
-                ->whereTime('end_time', $sessionTime->end_time)
-                ->lockForUpdate()
-                ->get();
-        }
+        $this->slotAvailability->lockDefinitions($rows);
     }
 
     private function checkConflicts(array $generatedSchedules): array
@@ -954,6 +995,7 @@ class TherapySessionController extends Controller
             $capacity = $sessionTime->capacity;
 
             $key = implode('|', [
+                $sessionTime->program_category_id,
                 $schedule['therapy_date'],
                 $sessionTime->start_time,
                 $sessionTime->end_time,
@@ -962,15 +1004,11 @@ class TherapySessionController extends Controller
             // Query database hanya sekali untuk setiap slot
             if (! array_key_exists($key, $slotCounts)) {
 
-                $slotCounts[$key] = TherapySession::whereDate(
-                    'therapy_date',
-                    $schedule['therapy_date']
-                )
-                    ->whereTime('start_time', $sessionTime->start_time)
-                    ->whereTime('end_time', $sessionTime->end_time)
-                    ->lockForUpdate()
-                    ->get(['id'])
-                    ->count();
+                $slotCounts[$key] = $this->slotAvailability->countOccupancy(
+                    $schedule['therapy_date'],
+                    $sessionTime,
+                    true
+                );
             }
 
             // Slot sudah penuh

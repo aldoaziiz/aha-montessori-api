@@ -7,6 +7,7 @@ use App\Models\ProgramCategorySessionTime;
 use App\Models\Registration;
 use App\Models\SchoolScheduleSubmission;
 use App\Models\TherapySession;
+use App\Services\TherapySessionSlotAvailability;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,10 @@ use Illuminate\Validation\ValidationException;
 
 class SchoolScheduleController extends Controller
 {
+    public function __construct(
+        private readonly TherapySessionSlotAvailability $slotAvailability
+    ) {}
+
     public function context(Request $request)
     {
         $user = $request->user();
@@ -466,13 +471,11 @@ class SchoolScheduleController extends Controller
                 );
 
                 if (! array_key_exists($slotKey, $slotCounts)) {
-                    $slotCounts[$slotKey] = TherapySession::query()
-                        ->whereDate('therapy_date', $row['therapy_date'])
-                        ->whereTime('start_time', $sessionTime->start_time)
-                        ->whereTime('end_time', $sessionTime->end_time)
-                        ->lockForUpdate()
-                        ->get(['id'])
-                        ->count();
+                    $slotCounts[$slotKey] = $this->slotAvailability->countOccupancy(
+                        $row['therapy_date'],
+                        $sessionTime,
+                        true
+                    );
                 }
 
                 $capacity = max((int) $sessionTime->capacity, 0);
@@ -571,26 +574,7 @@ class SchoolScheduleController extends Controller
 
     private function lockSubmittedSlotDefinitions(array $rows): void
     {
-        $slots = collect($rows)
-            ->map(fn (array $row) => [
-                'start_time' => $row['session_time']->start_time,
-                'end_time' => $row['session_time']->end_time,
-            ])
-            ->unique(fn (array $slot) => $slot['start_time'].'|'.$slot['end_time'])
-            ->values();
-
-        ProgramCategorySessionTime::query()
-            ->where(function ($query) use ($slots) {
-                foreach ($slots as $slot) {
-                    $query->orWhere(function ($query) use ($slot) {
-                        $query->whereTime('start_time', $slot['start_time'])
-                            ->whereTime('end_time', $slot['end_time']);
-                    });
-                }
-            })
-            ->orderBy('id')
-            ->lockForUpdate()
-            ->get(['id']);
+        $this->slotAvailability->lockDefinitions($rows);
     }
 
     private function schedulingUnavailableReason(
