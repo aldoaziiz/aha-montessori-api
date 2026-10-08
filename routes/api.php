@@ -18,6 +18,7 @@ use App\Http\Controllers\API\ProgramCategorySessionController;
 use App\Http\Controllers\API\ProgramCategorySessionTimeController;
 use App\Http\Controllers\API\ProgramController;
 use App\Http\Controllers\API\PublicRegistrationController;
+use App\Http\Controllers\API\PublicRegistrationSettingsController;
 use App\Http\Controllers\API\RegistrationController;
 use App\Http\Controllers\API\RoomController;
 use App\Http\Controllers\API\SchoolClassController;
@@ -153,6 +154,11 @@ Route::get(
 );
 
 // PUBLIC REGISTRATION
+Route::get(
+    '/public-registration/status',
+    [PublicRegistrationSettingsController::class, 'publicStatus']
+);
+
 Route::post(
     '/public-registrations',
     [PublicRegistrationController::class, 'store']
@@ -324,6 +330,16 @@ Route::middleware([
     // ======================
     // TRANSACTIONS
     // ======================
+
+    Route::get(
+        '/settings/public-registration',
+        [PublicRegistrationSettingsController::class, 'show']
+    );
+
+    Route::put(
+        '/settings/public-registration',
+        [PublicRegistrationSettingsController::class, 'update']
+    );
 
     Route::apiResource(
         'registrations',

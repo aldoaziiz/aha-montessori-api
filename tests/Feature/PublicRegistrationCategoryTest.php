@@ -15,6 +15,24 @@ class PublicRegistrationCategoryTest extends TestCase
     {
         parent::setUp();
 
+        Schema::create('app_settings', function (Blueprint $table) {
+            $table->id();
+            $table->string('setting_key', 100)->unique();
+            $table->text('setting_value');
+            $table->string('setting_group', 100)->default('general');
+            $table->string('value_type', 30)->default('string');
+            $table->string('description')->nullable();
+            $table->timestamps();
+        });
+        DB::table('app_settings')->insert([
+            'setting_key' => 'public_registration_enabled',
+            'setting_value' => '1',
+            'setting_group' => 'registration',
+            'value_type' => 'boolean',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->string('name');

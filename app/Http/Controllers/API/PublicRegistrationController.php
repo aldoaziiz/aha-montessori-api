@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Models\AppSetting;
 use App\Models\Child;
 use App\Models\Guardian;
 use App\Models\Program;
@@ -18,6 +19,12 @@ class PublicRegistrationController extends Controller
 {
     public function store(Request $request)
     {
+        if (! AppSetting::enabled('public_registration_enabled')) {
+            return response()->json([
+                'message' => 'Public registration is currently closed.',
+            ], 403);
+        }
+
         return DB::transaction(function () use ($request) {
 
             // ======================
