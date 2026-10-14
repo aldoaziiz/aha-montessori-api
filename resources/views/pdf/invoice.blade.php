@@ -368,15 +368,19 @@ th {
         <thead>
 <tr>
 
-    <th width="8%">No</th>
+    <th width="6%">No</th>
 
-    <th>Description</th>
+    <th width="28%">Description</th>
 
-    <th width="12%">Qty</th>
+    <th width="7%">Qty</th>
 
-    <th width="20%">Unit Price</th>
+    <th width="15%">Unit Price</th>
 
-    <th width="22%">Subtotal</th>
+    <th width="15%">Subtotal</th>
+
+    <th width="13%">Discount</th>
+
+    <th width="16%">After Discount</th>
 
 </tr>
 </thead>
@@ -407,6 +411,19 @@ th {
         Rp {{ number_format($item->subtotal,0,',','.') }}
     </td>
 
+    <td class="right">
+        @if((float) ($item->discount_amount ?? 0) > 0)
+            {{ number_format((float) ($item->discount_percentage ?? 0), 2, ',', '.') }}%<br>
+            - Rp {{ number_format($item->discount_amount, 0, ',', '.') }}
+        @else
+            -
+        @endif
+    </td>
+
+    <td class="right">
+        Rp {{ number_format($item->subtotal - (float) ($item->discount_amount ?? 0), 0, ',', '.') }}
+    </td>
+
 </tr>
 
 @endforeach
@@ -422,7 +439,7 @@ th {
         </td>
 
         <td class="summary-value">
-            Rp {{ number_format($billing->total_amount, 0, ',', '.') }}
+            Rp {{ number_format($billing->items->sum('subtotal'), 0, ',', '.') }}
         </td>
     </tr>
 
@@ -432,7 +449,8 @@ th {
         </td>
 
         <td class="summary-value">
-            -
+            @php($totalDiscount = $billing->items->sum('discount_amount'))
+            {{ $totalDiscount > 0 ? '- Rp '.number_format($totalDiscount, 0, ',', '.') : '-' }}
         </td>
     </tr>
 

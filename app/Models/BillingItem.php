@@ -13,6 +13,13 @@ class BillingItem extends Model
         'price',
         'quantity',
         'subtotal',
+        'discount_percentage',
+        'discount_amount',
+    ];
+
+    protected $casts = [
+        'discount_percentage' => 'decimal:2',
+        'discount_amount' => 'decimal:2',
     ];
 
     public function billing()

@@ -457,6 +457,11 @@ Route::middleware([
     );
 
     Route::get(
+        '/registrations/{id}/billing-preview',
+        [BillingController::class, 'previewGeneration']
+    );
+
+    Route::get(
         '/billings/{id}',
         [BillingController::class, 'show']
     );
