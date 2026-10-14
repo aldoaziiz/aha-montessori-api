@@ -81,6 +81,36 @@ class PublicRegistrationSettingsTest extends TestCase
             ->assertStatus(503);
     }
 
+    public function test_deactivation_command_turns_public_registration_off(): void
+    {
+        $this->createSettingsTable();
+        DB::table('app_settings')->insert([
+            'setting_key' => 'public_registration_enabled',
+            'setting_value' => '1',
+            'setting_group' => 'registration',
+            'value_type' => 'boolean',
+            'description' => 'Controls whether the public registration form accepts submissions.',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->artisan('aha:deactivate-public-registration')
+            ->expectsOutput('Public registration is now inactive.')
+            ->assertSuccessful();
+
+        $this->assertDatabaseHas('app_settings', [
+            'setting_key' => 'public_registration_enabled',
+            'setting_value' => '0',
+        ]);
+    }
+
+    public function test_deactivation_command_fails_when_settings_table_is_missing(): void
+    {
+        $this->artisan('aha:deactivate-public-registration')
+            ->expectsOutput('The app_settings table does not exist.')
+            ->assertFailed();
+    }
+
     private function createSettingsTable(): void
     {
         Schema::create('app_settings', function (Blueprint $table) {
