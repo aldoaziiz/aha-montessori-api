@@ -28,6 +28,14 @@ class ActivityController extends Controller
     {
         $user = auth()->user();
 
+        $validated = $request->validate([
+            'activity_content_type_id' => [
+                'nullable',
+                'integer',
+                'exists:activity_content_types,id',
+            ],
+        ]);
+
         $perPage = (int) $request->input(
             'per_page',
             10
@@ -55,6 +63,13 @@ class ActivityController extends Controller
         ])
             ->orderByDesc('created_at')
             ->orderByDesc('id');
+
+        if (isset($validated['activity_content_type_id'])) {
+            $query->where(
+                'activity_content_type_id',
+                $validated['activity_content_type_id']
+            );
+        }
 
         // ======================
         // GUARDIAN FILTER
