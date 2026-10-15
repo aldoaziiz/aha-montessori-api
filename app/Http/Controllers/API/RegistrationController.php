@@ -414,7 +414,7 @@ class RegistrationController extends Controller
 
                         'price' => $program->price,
 
-                        'learning_period_months' => $request->registration['program_duration_months'] ?? 6,
+                        'learning_period_months' => $request->registration['program_duration_months'] ?? 1,
 
                     ]);
                 }
@@ -440,7 +440,7 @@ class RegistrationController extends Controller
 
                         'price' => $program->price,
 
-                        'learning_period_months' => $request->registration['program_duration_months'] ?? 6,
+                        'learning_period_months' => $request->registration['program_duration_months'] ?? 1,
 
                     ]);
                 }
