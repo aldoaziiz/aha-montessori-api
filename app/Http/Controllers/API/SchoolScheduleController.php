@@ -39,7 +39,7 @@ class SchoolScheduleController extends Controller
                 'programCategory:id,name',
                 'programs:id,program_category_id',
                 'programs.category:id,name',
-                'therapySessions:id,registration_id,uses_session',
+                'therapySessions:id,registration_id,therapy_session_status_id,uses_session',
             ])
             ->join('children', 'registrations.child_id', '=', 'children.id')
             ->whereHas('child.guardians', function ($query) use ($guardian) {
@@ -78,6 +78,10 @@ class SchoolScheduleController extends Controller
                         'total_session' => $summary['total_session'],
                         'used_session' => $summary['used_session'],
                         'remaining_session' => $summary['remaining_session'],
+                        'created_session' => $summary['created_session'],
+                        'scheduled_session' => $summary['scheduled_session'],
+                        'completed_session' => $summary['completed_session'],
+                        'available_to_schedule' => $summary['available_to_schedule'],
                         'is_session_expired' => $summary['is_session_expired'],
                     ],
                 ];

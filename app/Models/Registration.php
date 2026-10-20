@@ -139,6 +139,32 @@ class Registration extends Model
             ->count();
     }
 
+    public function getScheduledSessionCount(): int
+    {
+        if ($this->relationLoaded('therapySessions')) {
+            return $this->therapySessions
+                ->where('therapy_session_status_id', TherapySession::STATUS_SCHEDULED)
+                ->count();
+        }
+
+        return $this->therapySessions()
+            ->where('therapy_session_status_id', TherapySession::STATUS_SCHEDULED)
+            ->count();
+    }
+
+    public function getCompletedSessionCount(): int
+    {
+        if ($this->relationLoaded('therapySessions')) {
+            return $this->therapySessions
+                ->where('therapy_session_status_id', TherapySession::STATUS_COMPLETED)
+                ->count();
+        }
+
+        return $this->therapySessions()
+            ->where('therapy_session_status_id', TherapySession::STATUS_COMPLETED)
+            ->count();
+    }
+
     public function isSessionExpired(): bool
     {
         if (! $this->session_expired_at) {
@@ -175,6 +201,9 @@ class Registration extends Model
     {
         $usedSession = $this->getUsedSessionCount();
         $isExpired = $this->isSessionExpired();
+        $scheduledSession = $this->getScheduledSessionCount();
+        $completedSession = $this->getCompletedSessionCount();
+        $createdSession = $scheduledSession + $completedSession;
 
         return [
             'total_session' => (int) $this->total_session,
@@ -182,6 +211,12 @@ class Registration extends Model
             'remaining_session' => $isExpired
                 ? 0
                 : max(((int) $this->total_session) - $usedSession, 0),
+            'created_session' => $createdSession,
+            'scheduled_session' => $scheduledSession,
+            'completed_session' => $completedSession,
+            'available_to_schedule' => $isExpired
+                ? 0
+                : max(((int) $this->total_session) - $createdSession, 0),
             'session_started_at' => $this->session_started_at,
             'session_expired_at' => $this->session_expired_at,
             'is_session_expired' => $isExpired,

@@ -488,6 +488,7 @@ class RegistrationController extends Controller
             'programs.category',
             'billing.paymentStatus',
             'payer',
+            'therapySessions:id,registration_id,therapy_session_status_id,uses_session',
         ])->findOrFail($id);
 
         return new RegistrationResource($data);

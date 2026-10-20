@@ -59,6 +59,7 @@ class SchoolScheduleContextTest extends TestCase
         Schema::create('therapy_sessions', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('registration_id');
+            $table->unsignedBigInteger('therapy_session_status_id')->default(1);
             $table->boolean('uses_session')->default(false);
         });
         Schema::create('registration_programs', function (Blueprint $table) {
@@ -131,9 +132,9 @@ class SchoolScheduleContextTest extends TestCase
             'learning_period_months' => 6,
         ]);
         DB::table('therapy_sessions')->insert([
-            ['registration_id' => 1, 'uses_session' => true],
-            ['registration_id' => 1, 'uses_session' => true],
-            ['registration_id' => 1, 'uses_session' => false],
+            ['registration_id' => 1, 'therapy_session_status_id' => 2, 'uses_session' => true],
+            ['registration_id' => 1, 'therapy_session_status_id' => 2, 'uses_session' => true],
+            ['registration_id' => 1, 'therapy_session_status_id' => 1, 'uses_session' => false],
         ]);
 
         Route::get('/test-school-schedule-context', [SchoolScheduleController::class, 'context']);
@@ -155,8 +156,29 @@ class SchoolScheduleContextTest extends TestCase
             ->assertJsonPath('data.1.session_summary.total_session', 10)
             ->assertJsonPath('data.1.session_summary.used_session', 2)
             ->assertJsonPath('data.1.session_summary.remaining_session', 8)
+            ->assertJsonPath('data.1.session_summary.created_session', 3)
+            ->assertJsonPath('data.1.session_summary.scheduled_session', 1)
+            ->assertJsonPath('data.1.session_summary.completed_session', 2)
+            ->assertJsonPath('data.1.session_summary.available_to_schedule', 7)
             ->assertJsonPath('meta.current_date', '2026-09-15')
             ->assertJsonMissing(['registration_number' => 'REG-BIMA-001']);
+    }
+
+    public function test_deleting_a_session_restores_available_schedule_quota(): void
+    {
+        $this->actingAs($this->user(10, 'guardian'));
+
+        DB::table('therapy_sessions')
+            ->where('registration_id', 1)
+            ->where('therapy_session_status_id', 1)
+            ->delete();
+
+        $this->getJson('/test-school-schedule-context')
+            ->assertOk()
+            ->assertJsonPath('data.1.session_summary.created_session', 2)
+            ->assertJsonPath('data.1.session_summary.scheduled_session', 0)
+            ->assertJsonPath('data.1.session_summary.completed_session', 2)
+            ->assertJsonPath('data.1.session_summary.available_to_schedule', 8);
     }
 
     public function test_guardian_without_profile_receives_an_empty_list(): void
