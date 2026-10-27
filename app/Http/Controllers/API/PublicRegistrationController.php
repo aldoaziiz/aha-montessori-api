@@ -193,6 +193,8 @@ class PublicRegistrationController extends Controller
 
                     'registration_number' => $registrationNumber,
 
+                    'registration_status' => Registration::STATUS_PENDING,
+
                     'child_id' => $child->id,
 
                     'complaint' => $request->registration['complaint']
