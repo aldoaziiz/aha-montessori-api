@@ -25,6 +25,7 @@ use App\Http\Controllers\API\SchoolClassController;
 use App\Http\Controllers\API\SchoolController;
 use App\Http\Controllers\API\SchoolEducationController;
 use App\Http\Controllers\API\SchoolScheduleController;
+use App\Http\Controllers\API\SchoolSessionsReportController;
 use App\Http\Controllers\API\StaffController;
 use App\Http\Controllers\API\StaffRoleController;
 use App\Http\Controllers\API\TherapySessionController;
@@ -481,6 +482,11 @@ Route::middleware([
             BillingReportController::class,
             'index',
         ]
+    );
+
+    Route::get(
+        '/reports/school-sessions',
+        [SchoolSessionsReportController::class, 'index']
     );
 
     // ======================
