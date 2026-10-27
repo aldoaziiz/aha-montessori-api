@@ -126,12 +126,7 @@ class SchoolScheduleController extends Controller
         )->startOfDay();
         $monthEnd = $monthStart->copy()->endOfMonth()->startOfDay();
         $currentMonth = now()->startOfMonth();
-
-        if ($monthStart->lt($currentMonth)) {
-            throw ValidationException::withMessages([
-                'month' => 'Past months cannot be selected.',
-            ]);
-        }
+        $isPastMonth = $monthStart->lt($currentMonth);
 
         $validFrom = $registration->session_started_at?->copy()->startOfDay();
         $validUntil = $registration->session_expired_at?->copy()->startOfDay();
@@ -188,11 +183,13 @@ class SchoolScheduleController extends Controller
 
         $unavailableReason = $submission
             ? 'The schedule for this month has already been submitted.'
-            : $this->schedulingUnavailableReason(
-                $registration,
-                $availableToSchedule,
-                $sessionTimes->isEmpty()
-            );
+            : ($isPastMonth
+                ? 'Past months are view-only. New schedules cannot be created.'
+                : $this->schedulingUnavailableReason(
+                    $registration,
+                    $availableToSchedule,
+                    $sessionTimes->isEmpty()
+                ));
         $canSchedule = $unavailableReason === null;
         $existingRegistrationDates = $registration->therapySessions
             ->map(fn (TherapySession $session) => Carbon::parse($session->therapy_date)->toDateString())
