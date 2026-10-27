@@ -104,7 +104,10 @@ class PublicRegistrationController extends Controller
             // ======================
 
             $child = Child::create(
-                $request->child
+                collect($request->child)->except([
+                    'session_started_at',
+                    'session_expired_at',
+                ])->all()
             );
 
             // ======================
@@ -257,6 +260,15 @@ class PublicRegistrationController extends Controller
 
                     ]);
                 }
+            }
+
+            if (
+                $registration->registrationPrograms()
+                    ->where('price', 1000000)
+                    ->whereHas('program', fn ($query) => $query->whereRaw('LOWER(TRIM(name)) = ?', ['registrasi']))
+                    ->exists()
+            ) {
+                $child->initializeSessionValidity(now());
             }
 
             $registration->syncSessionEntitlement();

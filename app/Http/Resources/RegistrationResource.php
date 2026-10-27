@@ -46,6 +46,8 @@ class RegistrationResource extends JsonResource
                 'allergy_history' => $this->child->allergy_history,
                 'special_condition' => $this->child->special_condition,
                 'under_therapy' => $this->child->under_therapy,
+                'session_started_at' => $this->child->session_started_at?->toDateString(),
+                'session_expired_at' => $this->child->session_expired_at?->toDateString(),
 
                 'guardians' => $this->child->guardians->map(function ($g) {
                     $role = GuardianRole::find($g->pivot->guardian_role_id);

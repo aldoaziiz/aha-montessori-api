@@ -442,16 +442,6 @@ class TherapySessionController extends Controller
             if (! $registration->canScheduleSessions()) {
                 $message = 'This registration is '.$registration->registration_status_label
                     .'. New scheduling is not allowed.';
-            } elseif (! $registration->session_started_at || ! $registration->session_expired_at) {
-                $message = 'Session validity dates have not been set for this registration.';
-            } elseif ($registration->isSessionExpired()) {
-                $message = 'Sessions for this registration have expired. New scheduling is not allowed.';
-            } elseif (! Carbon::parse($date)->startOfDay()->betweenIncluded(
-                $registration->session_started_at,
-                $registration->session_expired_at
-            )) {
-                $message = 'Session date must be between '.$registration->session_started_at->toDateString()
-                    .' and '.$registration->session_expired_at->toDateString().'.';
             }
 
             if ($message !== null) {

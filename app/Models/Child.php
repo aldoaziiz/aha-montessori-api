@@ -24,6 +24,13 @@ class Child extends Model
         'school_education_id',
         'room_id',
         'program_category_id',
+        'session_started_at',
+        'session_expired_at',
+    ];
+
+    protected $casts = [
+        'session_started_at' => 'date',
+        'session_expired_at' => 'date',
     ];
 
     protected static function booted()
@@ -103,5 +110,19 @@ class Child extends Model
         return $this->belongsTo(
             ProgramCategory::class
         );
+    }
+
+    public function initializeSessionValidity(?\Illuminate\Support\Carbon $startedAt = null): void
+    {
+        if ($this->session_started_at || $this->session_expired_at) {
+            return;
+        }
+
+        $startedAt = ($startedAt ?? now())->copy()->startOfDay();
+
+        $this->forceFill([
+            'session_started_at' => $startedAt->toDateString(),
+            'session_expired_at' => $startedAt->copy()->addYear()->toDateString(),
+        ])->save();
     }
 }

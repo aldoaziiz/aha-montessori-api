@@ -30,14 +30,10 @@ class Registration extends Model
         'room_id',
         'program_category_id',
         'total_session',
-        'session_started_at',
-        'session_expired_at',
     ];
 
     protected $casts = [
         'total_session' => 'integer',
-        'session_started_at' => 'date',
-        'session_expired_at' => 'date',
     ];
 
     public function child()
@@ -117,15 +113,19 @@ class Registration extends Model
 
     public function syncSessionEntitlement(): void
     {
-        $startedAt = $this->created_at
-            ? Carbon::parse($this->created_at)->startOfDay()
-            : now()->startOfDay();
-
         $this->forceFill([
             'total_session' => $this->calculateTotalSession(),
-            'session_started_at' => $startedAt->toDateString(),
-            'session_expired_at' => $startedAt->copy()->addYear()->toDateString(),
         ])->save();
+    }
+
+    public function getSessionStartedAtAttribute(): ?Carbon
+    {
+        return $this->child?->session_started_at;
+    }
+
+    public function getSessionExpiredAtAttribute(): ?Carbon
+    {
+        return $this->child?->session_expired_at;
     }
 
     public function getUsedSessionCount(): int
@@ -190,10 +190,6 @@ class Registration extends Model
 
     public function getRemainingSessionCount(): int
     {
-        if ($this->isSessionExpired()) {
-            return 0;
-        }
-
         return max(((int) $this->total_session) - $this->getUsedSessionCount(), 0);
     }
 
@@ -208,15 +204,11 @@ class Registration extends Model
         return [
             'total_session' => (int) $this->total_session,
             'used_session' => $usedSession,
-            'remaining_session' => $isExpired
-                ? 0
-                : max(((int) $this->total_session) - $usedSession, 0),
+            'remaining_session' => max(((int) $this->total_session) - $usedSession, 0),
             'created_session' => $createdSession,
             'scheduled_session' => $scheduledSession,
             'completed_session' => $completedSession,
-            'available_to_schedule' => $isExpired
-                ? 0
-                : max(((int) $this->total_session) - $createdSession, 0),
+            'available_to_schedule' => max(((int) $this->total_session) - $createdSession, 0),
             'session_started_at' => $this->session_started_at,
             'session_expired_at' => $this->session_expired_at,
             'is_session_expired' => $isExpired,

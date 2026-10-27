@@ -35,7 +35,7 @@ class SchoolScheduleController extends Controller
 
         $registrations = Registration::query()
             ->with([
-                'child:id,name,nickname',
+                'child:id,name,nickname,session_started_at,session_expired_at',
                 'programCategory:id,name',
                 'programs:id,program_category_id',
                 'programs.category:id,name',
@@ -127,21 +127,6 @@ class SchoolScheduleController extends Controller
         $monthEnd = $monthStart->copy()->endOfMonth()->startOfDay();
         $currentMonth = now()->startOfMonth();
         $isPastMonth = $monthStart->lt($currentMonth);
-
-        $validFrom = $registration->session_started_at?->copy()->startOfDay();
-        $validUntil = $registration->session_expired_at?->copy()->startOfDay();
-
-        if ($validFrom && $monthEnd->lt($validFrom)) {
-            throw ValidationException::withMessages([
-                'month' => 'The selected month is before the registration validity period.',
-            ]);
-        }
-
-        if ($validUntil && $monthStart->gt($validUntil)) {
-            throw ValidationException::withMessages([
-                'month' => 'The selected month is after the registration validity period.',
-            ]);
-        }
 
         $programCategoryId = $this->resolveProgramCategoryId($registration);
         $allSessionTimes = ProgramCategorySessionTime::query()
@@ -267,8 +252,6 @@ class SchoolScheduleController extends Controller
                 $dateReason = 'registration_unavailable';
             } elseif ($date->lt(now()->startOfDay())) {
                 $dateReason = 'past_date';
-            } elseif (($validFrom && $date->lt($validFrom)) || ($validUntil && $date->gt($validUntil))) {
-                $dateReason = 'outside_validity';
             } elseif ($existingRegistrationDates->has($dateString)) {
                 $dateReason = 'already_scheduled';
             } elseif (! $sessions->contains(fn (array $session) => ! $session['is_full'])) {
@@ -397,15 +380,6 @@ class SchoolScheduleController extends Controller
                             "$field.therapy_date" => 'Every session date must be in the selected month.',
                         ]);
                     }
-                    if (! $date->betweenIncluded(
-                        $registration->session_started_at,
-                        $registration->session_expired_at
-                    )) {
-                        throw ValidationException::withMessages([
-                            "$field.therapy_date" => 'This date is outside the registration validity period.',
-                        ]);
-                    }
-
                     $sessionTime = $sessionTimes->get($session['session_time_id']);
                     if (
                         ! $sessionTime
@@ -536,21 +510,6 @@ class SchoolScheduleController extends Controller
                 'month' => 'Past months cannot be selected.',
             ]);
         }
-        if (! $registration->session_started_at || ! $registration->session_expired_at) {
-            throw ValidationException::withMessages([
-                'registration_id' => 'Session validity dates have not been set for this registration.',
-            ]);
-        }
-        if ($monthEnd->lt($registration->session_started_at)) {
-            throw ValidationException::withMessages([
-                'month' => 'The selected month is before the registration validity period.',
-            ]);
-        }
-        if ($monthStart->gt($registration->session_expired_at)) {
-            throw ValidationException::withMessages([
-                'month' => 'The selected month is after the registration validity period.',
-            ]);
-        }
     }
 
     private function availableSessionCount(Registration $registration, bool $lockForUpdate = false): int
@@ -588,12 +547,6 @@ class SchoolScheduleController extends Controller
         }
         if ($registration->total_session === null) {
             return 'Session totals have not been set for this registration.';
-        }
-        if (! $registration->session_started_at || ! $registration->session_expired_at) {
-            return 'Session validity dates have not been set for this registration.';
-        }
-        if ($registration->isSessionExpired()) {
-            return 'Sessions for this registration have expired.';
         }
         if ($availableToSchedule <= 0) {
             return 'No sessions are available to schedule.';

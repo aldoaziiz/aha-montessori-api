@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use App\Models\TherapySession;
 use Illuminate\Console\Command;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
@@ -14,7 +13,7 @@ class BackfillRegistrationSessions extends Command
     protected $signature = 'aha:backfill-registration-sessions
                             {--apply : Apply the backfill; otherwise only preview changes}';
 
-    protected $description = 'Fill missing registration session totals and validity dates, and align attendance usage';
+    protected $description = 'Fill missing registration session totals and align attendance usage';
 
     public function handle(): int
     {
@@ -45,21 +44,6 @@ class BackfillRegistrationSessions extends Command
                         $after['total_session'] = $total;
                     }
 
-                    if ($registration->session_started_at === null) {
-                        if (! $registration->created_at || str_starts_with($registration->created_at, '0000-')) {
-                            throw new RuntimeException("Registration {$registration->id}: missing/invalid created_at.");
-                        }
-                        $after['session_started_at'] = Carbon::parse($registration->created_at)->toDateString();
-                    }
-                    $start = $after['session_started_at'] ?? $registration->session_started_at;
-                    if ($registration->session_expired_at === null) {
-                        // Match Registration::syncSessionEntitlement, including leap-year behavior.
-                        $after['session_expired_at'] = Carbon::parse($start)->addYear()->toDateString();
-                    }
-                    $end = $after['session_expired_at'] ?? $registration->session_expired_at;
-                    if (Carbon::parse($end)->lt(Carbon::parse($start))) {
-                        throw new RuntimeException("Registration {$registration->id}: expiry precedes start date.");
-                    }
                     if ($after !== []) {
                         $changes['registrations'][] = [
                             'id' => $registration->id,

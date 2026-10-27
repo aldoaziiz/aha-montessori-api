@@ -238,10 +238,15 @@ class RegistrationController extends Controller
 
                 $child =
                     Child::create(
-                        $request->child
+                        collect($request->child)->except([
+                            'session_started_at',
+                            'session_expired_at',
+                        ])->all()
                     );
 
             }
+
+            $isFirstRegistration = ! $child->registrations()->exists();
 
             // ======================
             // 2. CREATE GUARDIAN
@@ -444,6 +449,16 @@ class RegistrationController extends Controller
 
                     ]);
                 }
+            }
+
+            if (
+                $isFirstRegistration
+                && $registration->registrationPrograms()
+                    ->where('price', 1000000)
+                    ->whereHas('program', fn ($query) => $query->whereRaw('LOWER(TRIM(name)) = ?', ['registrasi']))
+                    ->exists()
+            ) {
+                $child->initializeSessionValidity(now());
             }
 
             $registration->syncSessionEntitlement();

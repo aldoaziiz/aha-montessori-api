@@ -91,6 +91,11 @@ class ChildController extends Controller
     {
         $this->forbidNonAdmin();
 
+        $request->validate([
+            'session_started_at' => ['nullable', 'date_format:Y-m-d', 'required_with:session_expired_at'],
+            'session_expired_at' => ['nullable', 'date_format:Y-m-d', 'required_with:session_started_at', 'after_or_equal:session_started_at'],
+        ]);
+
         $child = Child::create($request->all());
 
         return response()->json($child, 201);
@@ -121,6 +126,11 @@ class ChildController extends Controller
     public function update(Request $request, $id)
     {
         $this->forbidNonAdmin();
+
+        $request->validate([
+            'session_started_at' => ['nullable', 'date_format:Y-m-d', 'required_with:session_expired_at'],
+            'session_expired_at' => ['nullable', 'date_format:Y-m-d', 'required_with:session_started_at', 'after_or_equal:session_started_at'],
+        ]);
 
         $child = Child::query()->find($id);
 
