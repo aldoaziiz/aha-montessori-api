@@ -41,6 +41,7 @@ class RegistrationResource extends JsonResource
             'child' => [
                 'id' => $this->child->id,
                 'name' => $this->child->name,
+                'id_number' => $this->child->id_number,
                 'birth_date' => $this->child->birth_date,
                 'allergy_history' => $this->child->allergy_history,
                 'special_condition' => $this->child->special_condition,
@@ -52,6 +53,8 @@ class RegistrationResource extends JsonResource
                     return [
                         'id' => $g->id,
                         'name' => $g->name,
+                        'id_number' => $g->id_number,
+                        'email' => $g->email,
                         'phone' => $g->phone,
                         'guardian_role' => [
                             'id' => $role?->id,
