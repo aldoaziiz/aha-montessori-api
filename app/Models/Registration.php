@@ -7,6 +7,8 @@ use Illuminate\Support\Carbon;
 
 class Registration extends Model
 {
+    public const STATUS_PENDING = 'pending';
+
     public const STATUS_ACTIVE = 'active';
 
     public const STATUS_INACTIVE = 'inactive';
@@ -14,6 +16,7 @@ class Registration extends Model
     public const STATUS_CLOSED = 'closed';
 
     public const STATUSES = [
+        self::STATUS_PENDING,
         self::STATUS_ACTIVE,
         self::STATUS_INACTIVE,
         self::STATUS_CLOSED,
@@ -182,6 +185,7 @@ class Registration extends Model
     public function getRegistrationStatusLabelAttribute(): string
     {
         return match ($this->registration_status) {
+            self::STATUS_PENDING => 'Pending',
             self::STATUS_INACTIVE => 'Inactive',
             self::STATUS_CLOSED => 'Closed',
             default => 'Active',

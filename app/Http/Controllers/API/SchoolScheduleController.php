@@ -587,7 +587,9 @@ class SchoolScheduleController extends Controller
         bool $hasNoSessionTimes
     ): ?string {
         if (! $registration->canScheduleSessions()) {
-            return 'This registration is not active.';
+            return $registration->registration_status === Registration::STATUS_PENDING
+                ? 'This registration is pending admin review.'
+                : 'This registration is not active.';
         }
         if ($registration->total_session === null) {
             return 'Session totals have not been set for this registration.';
