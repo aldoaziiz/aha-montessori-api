@@ -21,7 +21,7 @@ class SchoolSessionsReportController extends Controller
             'child_name' => ['nullable', 'string', 'max:255'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
-            'sort_by' => ['nullable', 'in:id_number,child_name,program_category,total_sessions,used_sessions,remaining_sessions'],
+            'sort_by' => ['nullable', 'in:id_number,child_name,program_category,session_started_at,session_expired_at,total_sessions,used_sessions,remaining_sessions'],
             'sort_order' => ['nullable', 'in:asc,desc'],
         ]);
 
@@ -41,6 +41,8 @@ class SchoolSessionsReportController extends Controller
                 'children.id_number',
                 'children.name as child_name',
                 'children.program_category_id',
+                'children.session_started_at',
+                'children.session_expired_at',
             ])
             ->selectSub($totalSessions, 'total_sessions')
             ->selectSub($usedSessions, 'used_sessions')
@@ -60,6 +62,8 @@ class SchoolSessionsReportController extends Controller
             'id_number' => 'children.id_number',
             'child_name' => 'children.name',
             'program_category' => 'program_categories.name',
+            'session_started_at' => 'children.session_started_at',
+            'session_expired_at' => 'children.session_expired_at',
             'total_sessions' => 'total_sessions',
             'used_sessions' => 'used_sessions',
             'remaining_sessions' => 'remaining_sessions',
@@ -91,6 +95,8 @@ class SchoolSessionsReportController extends Controller
                 'id_number' => $child->id_number,
                 'child_name' => $child->child_name,
                 'program_category' => $child->programCategory?->name ?? '-',
+                'session_started_at' => $child->session_started_at?->toDateString(),
+                'session_expired_at' => $child->session_expired_at?->toDateString(),
                 'total_sessions' => $total,
                 'used_sessions' => $used,
                 'remaining_sessions' => $total - $used,
