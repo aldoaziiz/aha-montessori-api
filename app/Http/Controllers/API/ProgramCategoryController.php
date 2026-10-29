@@ -17,6 +17,7 @@ class ProgramCategoryController extends Controller
             ->select([
                 'id',
                 'name',
+                'supports_tracks',
             ])
             ->orderBy('name')
             ->get();
@@ -28,6 +29,8 @@ class ProgramCategoryController extends Controller
 
     public function store(Request $request)
     {
+        $supportsTracks = $request->boolean('supports_tracks');
+
         $validated = $request->validate([
             'name' => [
                 'required',
@@ -36,10 +39,12 @@ class ProgramCategoryController extends Controller
                 Rule::unique('program_categories', 'name'),
             ],
 
+            'supports_tracks' => ['sometimes', 'boolean'],
+
             'sessions' => [
-                'required',
+                $supportsTracks ? 'nullable' : 'required',
                 'array',
-                'min:1',
+                ...($supportsTracks ? [] : ['min:1']),
             ],
 
             'sessions.*.session_order' => [
@@ -72,7 +77,9 @@ class ProgramCategoryController extends Controller
             ],
         ]);
 
-        foreach ($validated['sessions'] as $index => $session) {
+        $sessionsInput = $validated['sessions'] ?? [];
+
+        foreach ($sessionsInput as $index => $session) {
             if ($session['end_time'] <= $session['start_time']) {
                 return response()->json([
                     'message' => 'Validation failed.',
@@ -85,7 +92,7 @@ class ProgramCategoryController extends Controller
             }
         }
 
-        $sessions = collect($validated['sessions'])
+        $sessions = collect($sessionsInput)
             ->map(function ($session, $index) {
                 $session['original_index'] = $index;
 
@@ -115,14 +122,15 @@ class ProgramCategoryController extends Controller
             }
         }
 
-        $sortedSessions = collect($validated['sessions'])
+        $sortedSessions = collect($sessionsInput)
             ->sortBy('session_order')
             ->values()
             ->all();
 
-        DB::transaction(function () use ($validated, $sortedSessions) {
+        $category = DB::transaction(function () use ($validated, $sortedSessions, $supportsTracks) {
             $category = ProgramCategory::create([
                 'name' => $validated['name'],
+                'supports_tracks' => $supportsTracks,
             ]);
 
             foreach ($sortedSessions as $session) {
@@ -136,10 +144,13 @@ class ProgramCategoryController extends Controller
                     'is_active' => true,
                 ]);
             }
+
+            return $category;
         });
 
         return response()->json([
             'message' => 'Program category created successfully.',
+            'data' => $category,
         ]);
     }
 }

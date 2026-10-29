@@ -4,6 +4,7 @@ namespace App\Services\Billing;
 
 use App\Models\Billing;
 use App\Models\BillingItem;
+use App\Models\Program;
 use App\Models\Registration;
 use App\Models\RegistrationProgram;
 use Illuminate\Support\Collection;
@@ -18,7 +19,7 @@ class BillingGenerationService
         $registration = Registration::with([
             'billing',
             'child:id,name',
-            'registrationPrograms.program',
+            'registrationPrograms.program.track',
         ])->findOrFail($registrationId);
 
         $this->ensureCanGenerate($registration);
@@ -36,7 +37,7 @@ class BillingGenerationService
         return DB::transaction(function () use ($registrationId, $discounts) {
             $registration = Registration::with([
                 'billing',
-                'registrationPrograms.program',
+                'registrationPrograms.program.track',
             ])->lockForUpdate()->findOrFail($registrationId);
 
             $this->ensureCanGenerate($registration);
@@ -71,6 +72,7 @@ class BillingGenerationService
 
             $total = 0;
 
+            $generatedLineCount = 0;
             foreach ($registration->registrationPrograms as $registrationProgram) {
                 $line = $this->lineItem($registrationProgram);
                 $discount = $discountsByItemId->get($registrationProgram->id);
@@ -94,6 +96,13 @@ class BillingGenerationService
                 ]);
 
                 $total += $discountedSubtotal;
+                $generatedLineCount++;
+            }
+
+            if ($generatedLineCount === 0) {
+                throw ValidationException::withMessages([
+                    'registration' => 'No billable items were found for this registration.',
+                ]);
             }
 
             $billing->update(['total_amount' => $total]);
@@ -133,18 +142,37 @@ class BillingGenerationService
             ]);
         }
 
-        $quantity = (int) $item->program->session_count === 0
+        $program = $item->program;
+        $isTrackProgram = (bool) $program->program_track_id;
+        $quantity = (int) $program->session_count === 0
             ? 1
-            : (int) $item->learning_period_months;
+            : (int) $program->session_count * (int) $item->learning_period_months;
         $price = (float) $item->price;
+        $description = $program->name;
+
+        if ($program->is_registration_fee) {
+            $description = $program->name.' (annual registration fee)';
+        }
+
+        if ($isTrackProgram && $program->track) {
+            $description = sprintf(
+                '%s %s — %s',
+                $program->track->subject_name,
+                ucfirst($program->track->delivery_mode),
+                $program->name
+            );
+        } elseif (! $isTrackProgram && (int) $program->session_count > 0) {
+            $quantity = (int) $item->learning_period_months;
+        }
 
         return [
             'registration_program_id' => (int) $item->id,
             'program_id' => (int) $item->program_id,
-            'description' => $item->program->name,
+            'description' => $description,
             'price' => $price,
             'quantity' => $quantity,
             'subtotal' => round($price * $quantity, 2),
         ];
     }
+
 }

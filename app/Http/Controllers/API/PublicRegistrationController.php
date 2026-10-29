@@ -6,14 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\AppSetting;
 use App\Models\Child;
 use App\Models\Guardian;
-use App\Models\Program;
 use App\Models\Registration;
 use App\Models\RegistrationProgram;
 use App\Models\User;
 use App\Services\Auth\CreateGuardianUserService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 class PublicRegistrationController extends Controller
 {
@@ -45,38 +43,14 @@ class PublicRegistrationController extends Controller
                 'guardian.phone' => 'required|string|max:255',
                 'guardian.guardian_role_id' => 'required|integer',
 
-                'registration.program_ids' => 'required|array|min:1',
-                'registration.program_ids.*' => 'required|integer|distinct|exists:programs,id',
                 'registration.program_category_id' => 'required|integer|exists:program_categories,id',
-                'registration.program_duration_months' => 'required|integer|min:1|max:12',
                 'registration.payer_id' => 'required',
-
             ]);
 
-            $programIds = collect($request->registration['program_ids'])
-                ->map(fn ($programId) => (int) $programId)
-                ->values();
-            $programsById = Program::query()
-                ->whereIn('id', $programIds)
-                ->get()
-                ->keyBy('id');
-            $programCategoryIds = $programsById
-                ->pluck('program_category_id')
-                ->filter()
-                ->map(fn ($categoryId) => (int) $categoryId)
-                ->unique()
-                ->values();
             $selectedProgramCategoryId = (int) $request->registration['program_category_id'];
-
-            if (
-                $programsById->count() !== $programIds->count()
-                || $programCategoryIds->count() !== 1
-                || $programCategoryIds->first() !== $selectedProgramCategoryId
-            ) {
-                throw ValidationException::withMessages([
-                    'registration.program_ids' => 'Every selected program must belong to the selected program category.',
-                ]);
-            }
+            $programSelections = app(\App\Services\RegistrationProgramSelectionService::class)
+                ->resolve($request, $selectedProgramCategoryId);
+            $selectedPrograms = collect($programSelections)->pluck('program');
 
             // ======================
             // CHECK EMAIL
@@ -200,9 +174,7 @@ class PublicRegistrationController extends Controller
                     'complaint' => $request->registration['complaint']
                         ?? null,
 
-                    'program_id' => $request->registration['program_ids'][0]
-                        ?? $request->registration['program_id']
-                        ?? null,
+                    'program_id' => $selectedPrograms->first()?->id,
 
                     'program_category_id' => $selectedProgramCategoryId,
 
@@ -219,49 +191,13 @@ class PublicRegistrationController extends Controller
             // REGISTRATION PROGRAMS
             // ======================
 
-            if (
-                ! empty(
-                    $request->registration['program_ids']
-                )
-            ) {
-
-                foreach (
-                    $request->registration['program_ids'] as $programId
-                ) {
-
-                    $program = $programsById->get((int) $programId);
-
-                    RegistrationProgram::create([
-                        'registration_id' => $registration->id,
-                        'program_id' => $program->id,
-                        'price' => $program->price,
-                        'learning_period_months' => $request->registration['program_duration_months'],
-                    ]);
-                }
-
-            } elseif (
-                ! empty(
-                    $request->registration['program_id']
-                )
-            ) {
-
-                $program =
-                    Program::find(
-                        $request->registration['program_id']
-                    );
-
-                if ($program) {
-
-                    RegistrationProgram::create([
-
-                        'registration_id' => $registration->id,
-
-                        'program_id' => $program->id,
-
-                        'price' => $program->price,
-
-                    ]);
-                }
+            foreach ($programSelections as $selection) {
+                RegistrationProgram::create([
+                    'registration_id' => $registration->id,
+                    'program_id' => $selection['program']->id,
+                    'price' => $selection['price'],
+                    'learning_period_months' => $selection['learning_period_months'],
+                ]);
             }
 
             if (

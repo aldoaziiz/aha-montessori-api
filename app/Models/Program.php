@@ -16,8 +16,14 @@ class Program extends Model
         'session_count',
         'clinic_id',
         'program_category_id',
+        'program_track_id',
+        'is_registration_fee',
         'order_number',
         'status_id',
+    ];
+
+    protected $casts = [
+        'is_registration_fee' => 'boolean',
     ];
 
     public function clinic()
@@ -33,6 +39,11 @@ class Program extends Model
             ProgramCategory::class,
             'program_category_id'
         );
+    }
+
+    public function track()
+    {
+        return $this->belongsTo(ProgramTrack::class, 'program_track_id');
     }
 
     public function status()

@@ -17,6 +17,7 @@ use App\Http\Controllers\API\ProgramCategoryController;
 use App\Http\Controllers\API\ProgramCategorySessionController;
 use App\Http\Controllers\API\ProgramCategorySessionTimeController;
 use App\Http\Controllers\API\ProgramController;
+use App\Http\Controllers\API\ProgramTrackController;
 use App\Http\Controllers\API\PublicRegistrationController;
 use App\Http\Controllers\API\PublicRegistrationSettingsController;
 use App\Http\Controllers\API\RegistrationController;
@@ -306,6 +307,31 @@ Route::middleware([
     Route::post(
         'program-categories',
         [ProgramCategoryController::class, 'store']
+    );
+
+    Route::get(
+        'program-categories/{programCategory}/tracks',
+        [ProgramTrackController::class, 'index']
+    );
+
+    Route::post(
+        'program-categories/{programCategory}/tracks',
+        [ProgramTrackController::class, 'store']
+    );
+
+    Route::put(
+        'program-tracks/{programTrack}',
+        [ProgramTrackController::class, 'update']
+    );
+
+    Route::post(
+        'program-tracks/{programTrack}/classes',
+        [ProgramTrackController::class, 'storeClass']
+    );
+
+    Route::patch(
+        'program-track-classes/{programTrackClass}',
+        [ProgramTrackController::class, 'updateClass']
     );
 
     Route::apiResource(

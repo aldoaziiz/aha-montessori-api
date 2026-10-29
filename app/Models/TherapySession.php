@@ -14,6 +14,8 @@ class TherapySession extends Model
 
     protected $fillable = [
         'registration_id',
+        'registration_program_id',
+        'program_category_session_time_id',
         'therapist_id',
         'therapy_session_status_id',
         'uses_session',
@@ -41,6 +43,16 @@ class TherapySession extends Model
     public function registration()
     {
         return $this->belongsTo(Registration::class);
+    }
+
+    public function registrationProgram()
+    {
+        return $this->belongsTo(RegistrationProgram::class);
+    }
+
+    public function programCategorySessionTime()
+    {
+        return $this->belongsTo(ProgramCategorySessionTime::class);
     }
 
     public function therapist()

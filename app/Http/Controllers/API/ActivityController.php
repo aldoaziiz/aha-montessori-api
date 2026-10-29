@@ -1129,13 +1129,15 @@ class ActivityController extends Controller
                     'therapy_date',
                     $therapyDate
                 )
-                ->where(
-                    'start_time',
-                    $sessionTime->start_time
-                )
-                ->where(
-                    'end_time',
-                    $sessionTime->end_time
+                ->when(
+                    $sessionTime->program_track_class_id,
+                    fn ($query) => $query->where(
+                        'program_category_session_time_id',
+                        $sessionTimeId
+                    ),
+                    fn ($query) => $query
+                        ->where('start_time', $sessionTime->start_time)
+                        ->where('end_time', $sessionTime->end_time)
                 )
                 ->whereHas(
                     'registration',
@@ -1164,13 +1166,15 @@ class ActivityController extends Controller
                     'therapy_date',
                     $therapyDate
                 )
-                ->where(
-                    'start_time',
-                    $sessionTime->start_time
-                )
-                ->where(
-                    'end_time',
-                    $sessionTime->end_time
+                ->when(
+                    $sessionTime->program_track_class_id,
+                    fn ($query) => $query->where(
+                        'program_category_session_time_id',
+                        $sessionTimeId
+                    ),
+                    fn ($query) => $query
+                        ->where('start_time', $sessionTime->start_time)
+                        ->where('end_time', $sessionTime->end_time)
                 )
                 ->whereHas(
                     'registration',
