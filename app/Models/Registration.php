@@ -55,6 +55,7 @@ class Registration extends Model
             Program::class,
             'registration_programs'
         )->withPivot(
+            'id',
             'price',
             'learning_period_months'
         );

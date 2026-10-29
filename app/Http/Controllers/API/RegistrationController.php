@@ -43,6 +43,7 @@ class RegistrationController extends Controller
         $query = Registration::with([
             'child.guardians',
             'programs.category',
+            'programs.track',
             'billing.paymentStatus',
         ]);
 
@@ -187,6 +188,16 @@ class RegistrationController extends Controller
             $request->validate(
                 $rules
             );
+
+            $registrationProgramSelections = [];
+            if (
+                ! empty($request->input('registration.program_selections'))
+                || ! empty($request->input('registration.program_ids'))
+                || ! empty($request->input('registration.program_id'))
+            ) {
+                $registrationProgramSelections = app(\App\Services\RegistrationProgramSelectionService::class)
+                    ->resolve($request, (int) $request->input('registration.program_category_id'));
+            }
 
             // ======================
             // CHECK EMAIL
@@ -378,7 +389,8 @@ class RegistrationController extends Controller
                     'program_category_id' => $request->registration['program_category_id']
                         ?? null,
 
-                    'program_id' => $request->registration['program_id']
+                    'program_id' => $registrationProgramSelections[0]['program']->id
+                        ?? $request->registration['program_id']
                         ?? null,
 
                     'payer_id' => $request->registration['payer_id']
@@ -394,61 +406,13 @@ class RegistrationController extends Controller
             // REGISTRATION PROGRAMS
             // ======================
 
-            if (
-                ! empty(
-                    $request->registration['program_ids']
-                )
-            ) {
-
-                foreach (
-                    $request->registration['program_ids'] as $programId
-                ) {
-
-                    $program =
-                        Program::find($programId);
-
-                    if (! $program) {
-                        continue;
-                    }
-
-                    RegistrationProgram::create([
-
-                        'registration_id' => $registration->id,
-
-                        'program_id' => $program->id,
-
-                        'price' => $program->price,
-
-                        'learning_period_months' => $request->registration['program_duration_months'] ?? 1,
-
-                    ]);
-                }
-
-            } elseif (
-                ! empty(
-                    $request->registration['program_id']
-                )
-            ) {
-
-                $program =
-                    Program::find(
-                        $request->registration['program_id']
-                    );
-
-                if ($program) {
-
-                    RegistrationProgram::create([
-
-                        'registration_id' => $registration->id,
-
-                        'program_id' => $program->id,
-
-                        'price' => $program->price,
-
-                        'learning_period_months' => $request->registration['program_duration_months'] ?? 1,
-
-                    ]);
-                }
+            foreach ($registrationProgramSelections as $selection) {
+                RegistrationProgram::create([
+                    'registration_id' => $registration->id,
+                    'program_id' => $selection['program']->id,
+                    'price' => $selection['price'],
+                    'learning_period_months' => $selection['learning_period_months'],
+                ]);
             }
 
             if (
@@ -501,6 +465,9 @@ class RegistrationController extends Controller
             'child.guardians',
             'clinic',
             'programs.category',
+            'programs.track',
+            'registrationPrograms.program.track',
+            'registrationPrograms.therapySessions',
             'billing.paymentStatus',
             'payer',
             'therapySessions:id,registration_id,therapy_session_status_id,uses_session',
@@ -563,21 +530,68 @@ class RegistrationController extends Controller
             $validated = $request->validate([
                 'clinic_id' => 'required|exists:clinics,id',
                 'program_category_id' => 'required|exists:program_categories,id',
-                'program_ids' => 'required|array|min:1',
-                'program_ids.*' => 'exists:programs,id',
+                'program_ids' => 'required_without:program_selections|array|min:1',
+                'program_ids.*' => 'required|integer|distinct|exists:programs,id',
+                'program_selections' => 'required_without:program_ids|array|min:1',
+                'program_selections.*.program_id' => 'required|integer|distinct|exists:programs,id',
+                'program_selections.*.learning_period_months' => 'required|integer|min:1|max:12',
 
                 'payer_id' => 'nullable|exists:payers,id',
 
-                'program_duration_months' => 'required|integer|min:1|max:12',
+                'program_duration_months' => 'nullable|integer|min:1|max:12',
             ]);
+
+            $request->merge(['registration' => array_merge(
+                (array) $request->input('registration', []),
+                array_intersect_key($validated, array_flip([
+                    'program_ids',
+                    'program_selections',
+                    'program_duration_months',
+                ]))
+            )]);
+            $programSelections = app(\App\Services\RegistrationProgramSelectionService::class)
+                ->resolve($request, (int) $validated['program_category_id']);
+            $targetProgramCategory = ProgramCategory::query()->findOrFail($validated['program_category_id']);
+            $hasSessions = $registration->therapySessions()->exists();
 
             if (
                 (int) $registration->program_category_id !== (int) $validated['program_category_id']
-                && $registration->therapySessions()->exists()
+                && $hasSessions
             ) {
                 return response()->json([
                     'message' => 'The program category cannot be changed while therapy sessions are attached to this registration.',
                 ], 422);
+            }
+
+            $preserveRegistrationProgramLinks = false;
+            if ($targetProgramCategory->supports_tracks && $hasSessions) {
+                $existingSelections = $registration->registrationPrograms()
+                    ->get(['program_id', 'price', 'learning_period_months'])
+                    ->map(fn (RegistrationProgram $item) => [
+                        'program_id' => (int) $item->program_id,
+                        'price' => round((float) $item->price, 2),
+                        'learning_period_months' => (int) $item->learning_period_months,
+                    ])
+                    ->sortBy('program_id')
+                    ->values()
+                    ->all();
+                $nextSelections = collect($programSelections)
+                    ->map(fn (array $selection) => [
+                        'program_id' => (int) $selection['program']->id,
+                        'price' => round((float) $selection['price'], 2),
+                        'learning_period_months' => (int) $selection['learning_period_months'],
+                    ])
+                    ->sortBy('program_id')
+                    ->values()
+                    ->all();
+
+                if ($existingSelections !== $nextSelections) {
+                    return response()->json([
+                        'message' => 'Subject packages and learning periods cannot be changed after sessions have been created.',
+                    ], 422);
+                }
+
+                $preserveRegistrationProgramLinks = true;
             }
 
             // ======================
@@ -587,7 +601,7 @@ class RegistrationController extends Controller
             $registration->update([
                 'clinic_id' => $validated['clinic_id'],
                 'program_category_id' => $validated['program_category_id'],
-                'program_id' => $validated['program_ids'][0],
+                'program_id' => $programSelections[0]['program']->id,
                 'payer_id' => $validated['payer_id'] ?? null,
             ]);
 
@@ -595,24 +609,19 @@ class RegistrationController extends Controller
             // REPLACE PROGRAMS
             // ======================
 
-            $registration
-                ->registrationPrograms()
-                ->delete();
+            if (! $preserveRegistrationProgramLinks) {
+                $registration
+                    ->registrationPrograms()
+                    ->delete();
 
-            foreach ($validated['program_ids'] as $programId) {
-
-                $program = Program::find($programId);
-
-                RegistrationProgram::create([
-
-                    'registration_id' => $registration->id,
-
-                    'program_id' => $program->id,
-
-                    'price' => $program->price,
-                    'learning_period_months' => $validated['program_duration_months'],
-
-                ]);
+                foreach ($programSelections as $selection) {
+                    RegistrationProgram::create([
+                        'registration_id' => $registration->id,
+                        'program_id' => $selection['program']->id,
+                        'price' => $selection['price'],
+                        'learning_period_months' => $selection['learning_period_months'],
+                    ]);
+                }
             }
 
             $registration->syncSessionEntitlement();
@@ -674,6 +683,8 @@ class RegistrationController extends Controller
             'billing.paymentStatus',
 
             'programs.category',
+            'programs.track',
+            'registrationPrograms.program.track',
 
             'programCategory',
 
@@ -683,7 +694,7 @@ class RegistrationController extends Controller
 
         ])->findOrFail($id);
 
-        $programs = Program::all();
+        $programs = Program::with(['category', 'track', 'status:id,name'])->get();
 
         $payers = Payer::all();
 
@@ -707,6 +718,13 @@ class RegistrationController extends Controller
                 'program_duration_months' => optional(
                     $registration->programs->first()
                 )->pivot?->learning_period_months,
+
+                'program_selections' => $registration->registrationPrograms
+                    ->map(fn ($item) => [
+                        'program_id' => $item->program_id,
+                        'learning_period_months' => $item->learning_period_months,
+                    ])
+                    ->values(),
 
             ],
 

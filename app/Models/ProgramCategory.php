@@ -11,6 +11,11 @@ class ProgramCategory extends Model
 
     protected $fillable = [
         'name',
+        'supports_tracks',
+    ];
+
+    protected $casts = [
+        'supports_tracks' => 'boolean',
     ];
 
     public function programs()
@@ -34,5 +39,10 @@ class ProgramCategory extends Model
         return $this->hasMany(
             Activity::class
         );
+    }
+
+    public function tracks()
+    {
+        return $this->hasMany(ProgramTrack::class);
     }
 }

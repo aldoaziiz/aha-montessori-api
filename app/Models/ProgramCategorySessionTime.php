@@ -10,6 +10,7 @@ class ProgramCategorySessionTime extends Model
 
     protected $fillable = [
         'program_category_id',
+        'program_track_class_id',
         'session_order',
         'session_name',
         'start_time',
@@ -25,5 +26,10 @@ class ProgramCategorySessionTime extends Model
     public function programCategory()
     {
         return $this->belongsTo(ProgramCategory::class);
+    }
+
+    public function trackClass()
+    {
+        return $this->belongsTo(ProgramTrackClass::class, 'program_track_class_id');
     }
 }

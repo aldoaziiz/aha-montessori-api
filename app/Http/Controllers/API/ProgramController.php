@@ -15,6 +15,7 @@ class ProgramController extends Controller
             'payer:id,name',
             'clinic:id,name',
             'category:id,name',
+            'track:id,program_category_id,subject_name,delivery_mode,price_per_session',
             'status:id,name',
         ]);
 
@@ -128,8 +129,12 @@ class ProgramController extends Controller
             'order_number' => 'nullable|integer',
             'clinic_id' => 'nullable|exists:clinics,id',
             'program_category_id' => 'nullable|exists:program_categories,id',
+            'program_track_id' => 'nullable|exists:program_tracks,id',
+            'is_registration_fee' => 'sometimes|boolean',
             'status_id' => 'nullable|exists:statuses,id',
         ]);
+
+        $validated = $this->normalizeTrackedProgram($validated);
 
         $validated['status_id'] = $validated['status_id'] ?? 1;
 
@@ -140,6 +145,7 @@ class ProgramController extends Controller
             'data' => $program->load([
                 'clinic:id,name',
                 'category:id,name',
+                'track:id,program_category_id,subject_name,delivery_mode,price_per_session',
                 'payer:id,name',
                 'status:id,name',
             ]),
@@ -151,6 +157,7 @@ class ProgramController extends Controller
         $program = Program::with([
             'clinic:id,name',
             'category:id,name',
+            'track:id,program_category_id,subject_name,delivery_mode,price_per_session',
             'payer:id,name',
             'status:id,name',
         ])->find($id);
@@ -181,8 +188,12 @@ class ProgramController extends Controller
             'order_number' => 'nullable|integer',
             'clinic_id' => 'nullable|exists:clinics,id',
             'program_category_id' => 'nullable|exists:program_categories,id',
+            'program_track_id' => 'nullable|exists:program_tracks,id',
+            'is_registration_fee' => 'sometimes|boolean',
             'status_id' => 'nullable|exists:statuses,id',
         ]);
+
+        $validated = $this->normalizeTrackedProgram($validated, $program);
 
         if (
             array_key_exists('program_category_id', $validated)
@@ -205,6 +216,7 @@ class ProgramController extends Controller
             'data' => $program->load([
                 'clinic:id,name',
                 'category:id,name',
+                'track:id,program_category_id,subject_name,delivery_mode,price_per_session',
                 'payer:id,name',
                 'status:id,name',
             ]),
@@ -222,6 +234,34 @@ class ProgramController extends Controller
         $program->delete();
 
         return response()->json(['message' => 'Deleted']);
+    }
+
+    private function normalizeTrackedProgram(array $validated, ?Program $program = null): array
+    {
+        $categoryId = (int) ($validated['program_category_id'] ?? $program?->program_category_id ?? 0);
+        $trackId = $validated['program_track_id'] ?? $program?->program_track_id;
+        $sessionCount = (int) ($validated['session_count'] ?? $program?->session_count ?? 0);
+        $isRegistrationFee = (bool) ($validated['is_registration_fee'] ?? $program?->is_registration_fee ?? false);
+        $category = \App\Models\ProgramCategory::find($categoryId);
+
+        if ($isRegistrationFee && ($trackId || $sessionCount !== 0)) {
+            abort(422, 'An annual registration fee must not be linked to a track or include sessions.');
+        }
+
+        if ($trackId) {
+            $track = \App\Models\ProgramTrack::query()->findOrFail($trackId);
+            if (! $category?->supports_tracks || (int) $track->program_category_id !== $categoryId) {
+                abort(422, 'The selected track does not belong to this track-based category.');
+            }
+            if ($sessionCount < 1) {
+                abort(422, 'A track-based program must include at least one session per month.');
+            }
+            $validated['price'] = (float) $track->price_per_session * $sessionCount;
+        } elseif ($category?->supports_tracks && $sessionCount > 0) {
+            abort(422, 'A track is required for a session-based program in this category.');
+        }
+
+        return $validated;
     }
 
     public function activate($id)

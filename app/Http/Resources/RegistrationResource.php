@@ -75,6 +75,7 @@ class RegistrationResource extends JsonResource
 
                 return [
                     'id' => $program->id,
+                    'registration_program_id' => $program->pivot->id,
                     'name' => $program->name,
 
                     // snapshot registration
@@ -83,10 +84,19 @@ class RegistrationResource extends JsonResource
 
                     // master program
                     'session_count' => $program->session_count,
+                    'program_track_id' => $program->program_track_id,
+                    'is_registration_fee' => (bool) $program->is_registration_fee,
+                    'track' => $program->track ? [
+                        'id' => $program->track->id,
+                        'subject_name' => $program->track->subject_name,
+                        'delivery_mode' => $program->track->delivery_mode,
+                        'price_per_session' => $program->track->price_per_session,
+                    ] : null,
 
                     'program_category' => [
                         'id' => $program->category?->id,
                         'name' => $program->category?->name,
+                        'supports_tracks' => (bool) $program->category?->supports_tracks,
                     ],
                 ];
             }),

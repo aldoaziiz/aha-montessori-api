@@ -19,7 +19,10 @@ class ProgramCategorySessionController extends Controller
 
     public function index(Request $request)
     {
-        $query = ProgramCategorySessionTime::with('programCategory');
+        $query = ProgramCategorySessionTime::with([
+            'programCategory',
+            'trackClass.track',
+        ]);
 
         if ($request->filled('search')) {
             $query->where(
@@ -46,6 +49,15 @@ class ProgramCategorySessionController extends Controller
                 'id' => $item->id,
                 'program_category_id' => $item->program_category_id,
                 'category_name' => $item->programCategory->name,
+                'track_class' => $item->trackClass ? [
+                    'id' => $item->trackClass->id,
+                    'class_code' => $item->trackClass->class_code,
+                    'track' => [
+                        'id' => $item->trackClass->track->id,
+                        'subject_name' => $item->trackClass->track->subject_name,
+                        'delivery_mode' => $item->trackClass->track->delivery_mode,
+                    ],
+                ] : null,
                 'session_order' => $item->session_order,
                 'session_name' => $item->session_name,
                 'start_time' => substr($item->start_time, 0, 5),
@@ -83,7 +95,13 @@ class ProgramCategorySessionController extends Controller
             $timeChanged = $oldStart !== $newStart || $oldEnd !== $newEnd;
 
             $overlappingDefinition = ProgramCategorySessionTime::query()
-                ->where('program_category_id', $sessionTime->program_category_id)
+                ->when(
+                    $sessionTime->program_track_class_id,
+                    fn ($query) => $query->where('program_track_class_id', $sessionTime->program_track_class_id),
+                    fn ($query) => $query
+                        ->where('program_category_id', $sessionTime->program_category_id)
+                        ->whereNull('program_track_class_id')
+                )
                 ->where('id', '!=', $sessionTime->id)
                 ->whereTime('start_time', '<', $newEnd)
                 ->whereTime('end_time', '>', $newStart)
@@ -105,10 +123,15 @@ class ProgramCategorySessionController extends Controller
             ]);
 
             if ($timeChanged) {
-                $futureSessionsUseOldTime = TherapySession::query()
-                    ->whereDate('therapy_date', '>=', now()->toDateString())
-                    ->whereTime('start_time', $oldStart)
-                    ->whereTime('end_time', $oldEnd)
+                $futureSessionsQuery = TherapySession::query()
+                    ->whereDate('therapy_date', '>=', now()->toDateString());
+                if ($sessionTime->program_track_class_id) {
+                    $futureSessionsQuery->where('program_category_session_time_id', $sessionTime->id);
+                } else {
+                    $futureSessionsQuery->whereTime('start_time', $oldStart)
+                        ->whereTime('end_time', $oldEnd);
+                }
+                $futureSessionsUseOldTime = $futureSessionsQuery
                     ->whereHas('registration', function ($registration) use ($sessionTime) {
                         $categoryId = (int) $sessionTime->program_category_id;
                         $registration->where('program_category_id', $categoryId)
@@ -128,11 +151,16 @@ class ProgramCategorySessionController extends Controller
                 }
             }
 
-            $overCapacity = TherapySession::query()
+            $overCapacityQuery = TherapySession::query()
                 ->selectRaw('DATE(therapy_date) as session_date, COUNT(*) as occupied')
-                ->whereDate('therapy_date', '>=', now()->toDateString())
-                ->whereTime('start_time', $newStart)
-                ->whereTime('end_time', $newEnd)
+                ->whereDate('therapy_date', '>=', now()->toDateString());
+            if ($sessionTime->program_track_class_id) {
+                $overCapacityQuery->where('program_category_session_time_id', $sessionTime->id);
+            } else {
+                $overCapacityQuery->whereTime('start_time', $newStart)
+                    ->whereTime('end_time', $newEnd);
+            }
+            $overCapacity = $overCapacityQuery
                 ->whereHas('registration', function ($registration) use ($sessionTime) {
                     $categoryId = (int) $sessionTime->program_category_id;
                     $registration->where('program_category_id', $categoryId)

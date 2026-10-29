@@ -49,7 +49,13 @@ class TherapySessionSlotAvailability
         }
 
         $ambiguousSlot = ProgramCategorySessionTime::query()
-            ->where('program_category_id', $categoryId)
+            ->when(
+                $sessionTime->program_track_class_id,
+                fn ($query) => $query->where('program_track_class_id', $sessionTime->program_track_class_id),
+                fn ($query) => $query
+                    ->where('program_category_id', $categoryId)
+                    ->whereNull('program_track_class_id')
+            )
             ->where('id', '!=', $sessionTime->id)
             ->whereTime('start_time', $sessionTime->start_time)
             ->whereTime('end_time', $sessionTime->end_time)
@@ -101,8 +107,13 @@ class TherapySessionSlotAvailability
     ): int {
         $query = TherapySession::query()
             ->whereDate('therapy_date', $date)
-            ->whereTime('start_time', $sessionTime->start_time)
-            ->whereTime('end_time', $sessionTime->end_time)
+            ->when(
+                $sessionTime->program_track_class_id,
+                fn ($query) => $query->where('program_category_session_time_id', $sessionTime->id),
+                fn ($query) => $query
+                    ->whereTime('start_time', $sessionTime->start_time)
+                    ->whereTime('end_time', $sessionTime->end_time)
+            )
             ->whereHas('registration', function ($registration) use ($sessionTime) {
                 $categoryId = (int) $sessionTime->program_category_id;
                 $registration->where('program_category_id', $categoryId)

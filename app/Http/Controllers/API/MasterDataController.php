@@ -40,7 +40,11 @@ class MasterDataController extends Controller
             'program_categories' => ProgramCategory::orderBy('name', 'asc')
                 ->get(),
 
-            'programs' => Program::orderBy('order_number', 'asc')
+            'programs' => Program::with([
+                'track:id,program_category_id,subject_name,delivery_mode,price_per_session,is_active',
+                'status:id,name',
+            ])
+                ->orderBy('order_number', 'asc')
                 ->get(),
 
             'schools' => School::orderBy('name', 'asc')

@@ -26,4 +26,9 @@ class RegistrationProgram extends Model
             Program::class
         );
     }
+
+    public function therapySessions()
+    {
+        return $this->hasMany(TherapySession::class);
+    }
 }
