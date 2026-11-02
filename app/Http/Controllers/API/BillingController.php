@@ -64,8 +64,16 @@ class BillingController extends Controller
         $validated = $request->validate([
             'discounts' => ['sometimes', 'array'],
             'discounts.*.registration_program_id' => ['required', 'integer', 'distinct'],
+            'discounts.*.discount_amount' => [
+                'sometimes',
+                'nullable',
+                'numeric',
+                'min:0',
+                'regex:/^\\d{1,13}$/',
+            ],
             'discounts.*.discount_percentage' => [
-                'required',
+                'sometimes',
+                'nullable',
                 'numeric',
                 'min:0',
                 'max:100',
