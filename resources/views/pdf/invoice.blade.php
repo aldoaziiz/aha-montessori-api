@@ -413,7 +413,6 @@ th {
 
     <td class="right">
         @if((float) ($item->discount_amount ?? 0) > 0)
-            {{ number_format((float) ($item->discount_percentage ?? 0), 2, ',', '.') }}%<br>
             - Rp {{ number_format($item->discount_amount, 0, ',', '.') }}
         @else
             -

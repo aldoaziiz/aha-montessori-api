@@ -19,7 +19,7 @@ class BillingGenerationService
         $registration = Registration::with([
             'billing',
             'child:id,name',
-            'registrationPrograms.program.track',
+            'registrationPrograms.program',
         ])->findOrFail($registrationId);
 
         $this->ensureCanGenerate($registration);
@@ -37,7 +37,7 @@ class BillingGenerationService
         return DB::transaction(function () use ($registrationId, $discounts) {
             $registration = Registration::with([
                 'billing',
-                'registrationPrograms.program.track',
+                'registrationPrograms.program',
             ])->lockForUpdate()->findOrFail($registrationId);
 
             $this->ensureCanGenerate($registration);
@@ -76,12 +76,28 @@ class BillingGenerationService
             foreach ($registration->registrationPrograms as $registrationProgram) {
                 $line = $this->lineItem($registrationProgram);
                 $discount = $discountsByItemId->get($registrationProgram->id);
-                $percentage = (float) ($discount['discount_percentage'] ?? 0);
-                $discountAmount = round(
-                    $line['subtotal'] * $percentage / 100,
-                    0,
-                    PHP_ROUND_HALF_UP
-                );
+                $subtotal = (float) $line['subtotal'];
+
+                if (isset($discount['discount_amount'])) {
+                    $discountAmount = (float) $discount['discount_amount'];
+                    $percentage = $subtotal > 0
+                        ? round($discountAmount / $subtotal * 100, 2)
+                        : 0;
+                } else {
+                    $percentage = (float) ($discount['discount_percentage'] ?? 0);
+                    $discountAmount = round(
+                        $subtotal * $percentage / 100,
+                        0,
+                        PHP_ROUND_HALF_UP
+                    );
+                }
+
+                if ($discountAmount < 0 || $discountAmount > $subtotal || floor($discountAmount) !== $discountAmount) {
+                    throw ValidationException::withMessages([
+                        'discounts' => 'The discount amount must be a whole rupiah amount and cannot exceed the item subtotal.',
+                    ]);
+                }
+
                 $discountedSubtotal = $line['subtotal'] - $discountAmount;
 
                 BillingItem::create([
@@ -154,14 +170,7 @@ class BillingGenerationService
             $description = $program->name.' (annual registration fee)';
         }
 
-        if ($isTrackProgram && $program->track) {
-            $description = sprintf(
-                '%s %s — %s',
-                $program->track->subject_name,
-                ucfirst($program->track->delivery_mode),
-                $program->name
-            );
-        } elseif (! $isTrackProgram && (int) $program->session_count > 0) {
+        if (! $isTrackProgram && (int) $program->session_count > 0) {
             $quantity = (int) $item->learning_period_months;
         }
 
