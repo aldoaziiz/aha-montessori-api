@@ -105,6 +105,11 @@ class Registration extends Model
         );
     }
 
+    public function assessmentDetail()
+    {
+        return $this->hasOne(AssessmentDetail::class);
+    }
+
     public function calculateTotalSession(): int
     {
         $this->loadMissing('programs');

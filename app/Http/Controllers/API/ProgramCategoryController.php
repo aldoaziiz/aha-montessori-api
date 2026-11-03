@@ -18,6 +18,7 @@ class ProgramCategoryController extends Controller
                 'id',
                 'name',
                 'supports_tracks',
+                'schedule_mode',
             ])
             ->orderBy('name')
             ->get();
@@ -30,6 +31,16 @@ class ProgramCategoryController extends Controller
     public function store(Request $request)
     {
         $supportsTracks = $request->boolean('supports_tracks');
+        $scheduleMode = $request->input(
+            'schedule_mode',
+            ProgramCategory::SCHEDULE_FIXED_SLOTS
+        );
+
+        $sessionsRules = $scheduleMode === ProgramCategory::SCHEDULE_EXTERNAL
+            ? ['nullable', 'array', 'size:0']
+            : ($supportsTracks
+                ? ['nullable', 'array']
+                : ['required', 'array', 'min:1']);
 
         $validated = $request->validate([
             'name' => [
@@ -41,11 +52,15 @@ class ProgramCategoryController extends Controller
 
             'supports_tracks' => ['sometimes', 'boolean'],
 
-            'sessions' => [
-                $supportsTracks ? 'nullable' : 'required',
-                'array',
-                ...($supportsTracks ? [] : ['min:1']),
+            'schedule_mode' => [
+                'sometimes',
+                Rule::in([
+                    ProgramCategory::SCHEDULE_FIXED_SLOTS,
+                    ProgramCategory::SCHEDULE_EXTERNAL,
+                ]),
             ],
+
+            'sessions' => $sessionsRules,
 
             'sessions.*.session_order' => [
                 'required',
@@ -76,6 +91,15 @@ class ProgramCategoryController extends Controller
                 'min:1',
             ],
         ]);
+
+        if ($scheduleMode === ProgramCategory::SCHEDULE_EXTERNAL && $supportsTracks) {
+            return response()->json([
+                'message' => 'Externally scheduled categories cannot use subject-based tracks.',
+                'errors' => [
+                    'supports_tracks' => ['Turn off subject-based tracks for external scheduling.'],
+                ],
+            ], 422);
+        }
 
         $sessionsInput = $validated['sessions'] ?? [];
 
@@ -127,10 +151,11 @@ class ProgramCategoryController extends Controller
             ->values()
             ->all();
 
-        $category = DB::transaction(function () use ($validated, $sortedSessions, $supportsTracks) {
+        $category = DB::transaction(function () use ($validated, $sortedSessions, $supportsTracks, $scheduleMode) {
             $category = ProgramCategory::create([
                 'name' => $validated['name'],
                 'supports_tracks' => $supportsTracks,
+                'schedule_mode' => $scheduleMode,
             ]);
 
             foreach ($sortedSessions as $session) {

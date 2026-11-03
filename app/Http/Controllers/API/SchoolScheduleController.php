@@ -37,9 +37,10 @@ class SchoolScheduleController extends Controller
         $registrations = Registration::query()
             ->with([
                 'child:id,name,nickname,session_started_at,session_expired_at',
-                'programCategory:id,name,supports_tracks',
+                'programCategory:id,name,supports_tracks,schedule_mode',
                 'programs:id,program_category_id',
-                'programs.category:id,name',
+                'programs.category:id,name,supports_tracks,schedule_mode',
+                'assessmentDetail',
                 'registrationPrograms.program.track',
                 'registrationPrograms.therapySessions:id,registration_program_id,therapy_session_status_id,uses_session',
                 'therapySessions:id,registration_id,therapy_session_status_id,uses_session',
@@ -77,7 +78,19 @@ class SchoolScheduleController extends Controller
                         'id' => $programCategory->id,
                         'name' => $programCategory->name,
                         'supports_tracks' => (bool) $programCategory->supports_tracks,
+                        'schedule_mode' => $programCategory->schedule_mode,
                     ] : null,
+                    'assessment_appointment' => $programCategory?->schedule_mode === 'external'
+                        ? [
+                            'appointment_date' => $registration->assessmentDetail?->appointment_date?->format('Y-m-d'),
+                            'start_time' => $registration->assessmentDetail?->start_time
+                                ? substr((string) $registration->assessmentDetail->start_time, 0, 5)
+                                : null,
+                            'end_time' => $registration->assessmentDetail?->end_time
+                                ? substr((string) $registration->assessmentDetail->end_time, 0, 5)
+                                : null,
+                        ]
+                        : null,
                     'program_selections' => $registration->registrationPrograms
                         ->filter(fn (RegistrationProgram $item) => $item->program?->track)
                         ->map(fn (RegistrationProgram $item) => $this->registrationProgramSummary($item))
@@ -119,7 +132,8 @@ class SchoolScheduleController extends Controller
         $registration = Registration::query()
             ->with([
                 'programs:id,program_category_id',
-                'programCategory:id,name,supports_tracks',
+                'programs.category:id,name,supports_tracks,schedule_mode',
+                'programCategory:id,name,supports_tracks,schedule_mode',
                 'registrationPrograms.program.track',
                 'registrationPrograms.therapySessions',
                 'therapySessions',
@@ -129,6 +143,8 @@ class SchoolScheduleController extends Controller
                 $query->where('guardians.id', $guardian->id);
             })
             ->firstOrFail();
+
+        $this->ensureFixedSlotCategory($registration);
 
         $monthStart = Carbon::create(
             (int) $validated['year'],
@@ -399,6 +415,7 @@ class SchoolScheduleController extends Controller
                 ->lockForUpdate()
                 ->firstOrFail();
             $registration->load('programCategory');
+            $this->ensureFixedSlotCategory($registration);
             $trackBased = (bool) $registration->programCategory?->supports_tracks;
             $registrationPrograms = $registration->registrationPrograms()
                 ->with(['program.track', 'therapySessions'])
@@ -780,6 +797,19 @@ class SchoolScheduleController extends Controller
             TherapySession::STATUS_ALPHA => 'Alpha',
             default => 'Unknown',
         };
+    }
+
+    private function ensureFixedSlotCategory(Registration $registration): void
+    {
+        $registration->loadMissing(['programCategory', 'programs.category']);
+        $category = $registration->programCategory
+            ?? $registration->programs->first()?->category;
+
+        abort_if(
+            $category?->schedule_mode === 'external',
+            422,
+            'This registration is scheduled externally. Contact the admin for appointment information.'
+        );
     }
 
     private function response(array $registrations)

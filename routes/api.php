@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\API\ActivityController;
 use App\Http\Controllers\API\ActivityPhotoController;
+use App\Http\Controllers\API\AssessmentDetailController;
 use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\API\BillingController;
 use App\Http\Controllers\API\BillingReportController;
@@ -203,6 +204,21 @@ Route::middleware([
     Route::get(
         '/school-schedule/context',
         [SchoolScheduleController::class, 'context']
+    );
+
+    Route::put(
+        '/registrations/{registration}/assessment-appointment',
+        [AssessmentDetailController::class, 'updateAppointment']
+    );
+
+    Route::post(
+        '/registrations/{registration}/assessment-report',
+        [AssessmentDetailController::class, 'uploadReport']
+    );
+
+    Route::get(
+        '/registrations/{registration}/assessment-report',
+        [AssessmentDetailController::class, 'downloadReport']
     );
 
     Route::get(

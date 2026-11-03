@@ -4,6 +4,7 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\Child;
+use App\Models\ProgramCategory;
 use App\Models\ProgramCategorySessionTime;
 use App\Models\Registration;
 use App\Models\RegistrationProgram;
@@ -266,6 +267,8 @@ class TherapySessionController extends Controller
                 $validated['registration_id']
             );
 
+            $this->ensureFixedSlotRegistration($registration);
+
             $this->validateSessionDates($registration, ['therapy_date' => $validated['therapy_date']]);
 
             $sessionTime = $this->resolveManualSessionTime(
@@ -350,6 +353,7 @@ class TherapySessionController extends Controller
             'programCategory',
             'registrationPrograms.program.track',
         ])->findOrFail($validated['registration_id']);
+        $this->ensureFixedSlotRegistration($registration);
         $this->validateSessionDates(
             $registration,
             collect($validated['sessions'])->mapWithKeys(fn ($row, $index) => [
@@ -390,6 +394,7 @@ class TherapySessionController extends Controller
                 'programCategory',
                 'registrationPrograms.program.track',
             ])->lockForUpdate()->findOrFail($validated['registration_id']);
+            $this->ensureFixedSlotRegistration($registration);
             $this->validateSessionDates(
                 $registration,
                 collect($validated['sessions'])->mapWithKeys(fn ($row, $index) => [
@@ -1044,6 +1049,7 @@ class TherapySessionController extends Controller
                 'programCategory',
                 'registrationPrograms.program.track',
             ])->lockForUpdate()->findOrFail($validated['registration_id']);
+            $this->ensureFixedSlotRegistration($registration);
             $trackBased = (bool) $registration->programCategory?->supports_tracks;
 
             if (! $trackBased && collect($validated['schedule_configs'])->pluck('day')->duplicates()->isNotEmpty()) {
@@ -1856,5 +1862,18 @@ class TherapySessionController extends Controller
         return response()->json([
             'data' => $children,
         ]);
+    }
+
+    private function ensureFixedSlotRegistration(Registration $registration): void
+    {
+        $registration->loadMissing(['programCategory', 'programs.category']);
+        $category = $registration->programCategory
+            ?? $registration->programs->first()?->category;
+
+        abort_if(
+            $category?->schedule_mode === ProgramCategory::SCHEDULE_EXTERNAL,
+            422,
+            'This registration is scheduled externally. Use its assessment appointment instead.'
+        );
     }
 }

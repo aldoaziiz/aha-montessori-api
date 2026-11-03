@@ -464,10 +464,12 @@ class RegistrationController extends Controller
         $data = Registration::with([
             'child.guardians',
             'clinic',
+            'programCategory',
             'programs.category',
             'programs.track',
             'registrationPrograms.program.track',
             'registrationPrograms.therapySessions',
+            'assessmentDetail.reportUploader',
             'billing.paymentStatus',
             'payer',
             'therapySessions:id,registration_id,therapy_session_status_id,uses_session',

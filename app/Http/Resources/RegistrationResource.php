@@ -15,6 +15,12 @@ class RegistrationResource extends JsonResource
     public function toArray($request)
     {
         $sessionSummary = $this->session_summary;
+        $programCategory = $this->programCategory
+            ?? $this->programs->first()?->category;
+        $assessmentDetail = $this->resource->relationLoaded('assessmentDetail')
+            ? $this->assessmentDetail
+            : null;
+        $isAdmin = $request->user()?->role === 'admin';
 
         return [
             'id' => $this->id,
@@ -25,6 +31,23 @@ class RegistrationResource extends JsonResource
             'total_session' => $this->total_session,
             'session_started_at' => $this->session_started_at?->toDateString(),
             'session_expired_at' => $this->session_expired_at?->toDateString(),
+            'program_category' => $programCategory ? [
+                'id' => $programCategory->id,
+                'name' => $programCategory->name,
+                'supports_tracks' => (bool) $programCategory->supports_tracks,
+                'schedule_mode' => $programCategory->schedule_mode,
+            ] : null,
+            'assessment_detail' => $isAdmin && $programCategory?->schedule_mode === 'external'
+                ? [
+                    'appointment_date' => $assessmentDetail?->appointment_date?->format('Y-m-d'),
+                    'start_time' => $assessmentDetail?->start_time ? substr((string) $assessmentDetail->start_time, 0, 5) : null,
+                    'end_time' => $assessmentDetail?->end_time ? substr((string) $assessmentDetail->end_time, 0, 5) : null,
+                    'has_report' => (bool) $assessmentDetail?->report_path,
+                    'report_original_name' => $assessmentDetail?->report_original_name,
+                    'report_uploaded_at' => $assessmentDetail?->report_uploaded_at?->toIso8601String(),
+                    'report_uploaded_by' => $assessmentDetail?->reportUploader?->name,
+                ]
+                : null,
             'session_summary' => [
                 'total_session' => $sessionSummary['total_session'],
                 'used_session' => $sessionSummary['used_session'],
@@ -97,6 +120,7 @@ class RegistrationResource extends JsonResource
                         'id' => $program->category?->id,
                         'name' => $program->category?->name,
                         'supports_tracks' => (bool) $program->category?->supports_tracks,
+                        'schedule_mode' => $program->category?->schedule_mode ?? 'fixed_slots',
                     ],
                 ];
             }),

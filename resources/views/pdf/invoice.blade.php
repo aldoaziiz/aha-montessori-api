@@ -472,15 +472,15 @@ th {
         <tr>
             <td class="payment-details">
                 <div class="invoice-notes-title">Informasi Pembayaran</div>
-                <p><strong>Bank:</strong> BNI</p>
-                <p><strong>No. Rekening:</strong> 1982335396</p>
-                <p><strong>Atas Nama:</strong> Fitria Ayu Rahmawati</p>
+                <p><strong>Bank:</strong> {{ $paymentInformation['bank'] }}</p>
+                <p><strong>No. Rekening:</strong> {{ $paymentInformation['account_number'] }}</p>
+                <p><strong>Atas Nama:</strong> {{ $paymentInformation['account_name'] }}</p>
             </td>
             <td>
                 <div class="invoice-notes-title">Syarat dan Ketentuan</div>
                 <ol class="terms-list">
                     <li>Masa berlaku biaya registrasi adalah 1 (satu) tahun terhitung sejak tanggal registrasi.</li>
-                    <li>Pembayaran dilakukan melalui rekening BNI yang tercantum pada bagian Informasi Pembayaran.</li>
+                    <li>Pembayaran dilakukan melalui rekening {{ $paymentInformation['bank'] }} yang tercantum pada bagian Informasi Pembayaran.</li>
                 </ol>
             </td>
         </tr>
