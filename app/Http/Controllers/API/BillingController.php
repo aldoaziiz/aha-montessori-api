@@ -17,9 +17,14 @@ class BillingController extends Controller
         $registration = $billing->registration;
         $category = $registration?->programCategory
             ?? $registration?->programs?->first()?->category;
-        $categoryName = mb_strtoupper(trim((string) $category?->name));
-        $isAssessment = $categoryName === 'ASSESSMENT'
-            || str_starts_with($categoryName, 'ASSESSMENT ');
+        $categoryName = preg_replace(
+            '/[^A-Z]/',
+            '',
+            mb_strtoupper(trim((string) $category?->name))
+        );
+        $isAssessment = str_starts_with($categoryName, 'ASSESSMENT')
+            || str_starts_with($categoryName, 'ASESSMENT')
+            || str_starts_with($categoryName, 'ASSESMENT');
 
         if ($isAssessment) {
             return [
