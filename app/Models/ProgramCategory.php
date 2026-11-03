@@ -9,14 +9,24 @@ class ProgramCategory extends Model
 {
     use HasFactory;
 
+    public const SCHEDULE_FIXED_SLOTS = 'fixed_slots';
+
+    public const SCHEDULE_EXTERNAL = 'external';
+
     protected $fillable = [
         'name',
         'supports_tracks',
+        'schedule_mode',
     ];
 
     protected $casts = [
         'supports_tracks' => 'boolean',
     ];
+
+    public function getScheduleModeAttribute($value): string
+    {
+        return $value ?: self::SCHEDULE_FIXED_SLOTS;
+    }
 
     public function programs()
     {

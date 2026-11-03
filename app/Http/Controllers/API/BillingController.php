@@ -12,6 +12,30 @@ use Illuminate\Support\Facades\Storage;
 
 class BillingController extends Controller
 {
+    private function paymentInformationFor(Billing $billing): array
+    {
+        $registration = $billing->registration;
+        $category = $registration?->programCategory
+            ?? $registration?->programs?->first()?->category;
+        $categoryName = mb_strtoupper(trim((string) $category?->name));
+        $isAssessment = $categoryName === 'ASSESSMENT'
+            || str_starts_with($categoryName, 'ASSESSMENT ');
+
+        if ($isAssessment) {
+            return [
+                'bank' => 'BSI',
+                'account_number' => '7359174696',
+                'account_name' => 'FAKIH NUR HUDA',
+            ];
+        }
+
+        return [
+            'bank' => 'BNI',
+            'account_number' => '1982335396',
+            'account_name' => 'Fitria Ayu Rahmawati',
+        ];
+    }
+
     private function forbidNonAdmin()
     {
         if (
@@ -34,6 +58,10 @@ class BillingController extends Controller
             'items',
 
             'registration.child',
+
+            'registration.programCategory',
+
+            'registration.programs.category',
 
             'registration.payer',
 
@@ -136,6 +164,11 @@ class BillingController extends Controller
                 $token
             )
             ->firstOrFail();
+
+        $billing->setAttribute(
+            'payment_information',
+            $this->paymentInformationFor($billing)
+        );
 
         return response()->json([
 
@@ -296,9 +329,13 @@ class BillingController extends Controller
         $billing = Billing::with([
             'items',
             'registration.child',
+            'registration.programCategory',
+            'registration.programs.category',
             'registration.payer',
             'paymentStatus',
         ])->findOrFail($id);
+
+        $paymentInformation = $this->paymentInformationFor($billing);
 
         $downloadedBy = auth()->user();
 
@@ -309,7 +346,8 @@ class BillingController extends Controller
             compact(
                 'billing',
                 'downloadedBy',
-                'generatedAt'
+                'generatedAt',
+                'paymentInformation'
             )
         );
 
