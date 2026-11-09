@@ -13,6 +13,7 @@ use App\Http\Controllers\API\ClinicController;
 use App\Http\Controllers\API\GuardianController;
 use App\Http\Controllers\API\GuardianRoleController;
 use App\Http\Controllers\API\MasterDataController;
+use App\Http\Controllers\API\MonthlyAttendanceReportController;
 use App\Http\Controllers\API\PayerController;
 use App\Http\Controllers\API\ProgramCategoryController;
 use App\Http\Controllers\API\ProgramCategorySessionController;
@@ -529,6 +530,11 @@ Route::middleware([
     Route::get(
         '/reports/school-sessions',
         [SchoolSessionsReportController::class, 'index']
+    );
+
+    Route::get(
+        '/reports/monthly-attendance',
+        [MonthlyAttendanceReportController::class, 'index']
     );
 
     // ======================
