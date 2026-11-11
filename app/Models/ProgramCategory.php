@@ -28,6 +28,11 @@ class ProgramCategory extends Model
         return $value ?: self::SCHEDULE_FIXED_SLOTS;
     }
 
+    public function isToddlerOrKinder(): bool
+    {
+        return in_array(mb_strtoupper(trim((string) $this->name)), ['TODDLER', 'KINDER'], true);
+    }
+
     public function programs()
     {
         return $this->hasMany(

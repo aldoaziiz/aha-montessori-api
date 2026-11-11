@@ -194,12 +194,8 @@ class ActivityController extends Controller
             ->values();
 
         $matchedChildCount = Child::query()
+            ->activeAndRegisteredInCategory((int) $validated['program_category_id'])
             ->whereIn('id', $children)
-            ->where(
-                'program_category_id',
-                $validated['program_category_id']
-            )
-            ->where('status_id', 1)
             ->count();
 
         if ($matchedChildCount !== $children->count()) {
@@ -509,18 +505,20 @@ class ActivityController extends Controller
             ->unique()
             ->values();
 
+        $existingChildIds = $activity->children()
+            ->pluck('children.id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
         $matchedChildCount = Child::query()
+            ->whereIn('id', $newChildIds)
+            ->where(function ($query) use ($activity, $existingChildIds) {
+                $query->activeAndRegisteredInCategory((int) $activity->program_category_id);
 
-            ->whereIn(
-                'id',
-                $newChildIds
-            )
-
-            ->where(
-                'program_category_id',
-                $activity->program_category_id
-            )
-
+                if ($existingChildIds !== []) {
+                    $query->orWhereIn('id', $existingChildIds);
+                }
+            })
             ->count();
 
         if (
@@ -1025,18 +1023,8 @@ class ActivityController extends Controller
             ],
         ]);
 
-        $children = Child::where('status_id', 1)
-            ->whereHas(
-                'latestRegistration',
-                function ($query) use ($request) {
-
-                    $query->where(
-                        'program_category_id',
-                        $request->program_category_id
-                    );
-
-                }
-            )
+        $children = Child::query()
+            ->activeAndRegisteredInCategory((int) $request->program_category_id)
             ->select([
                 'id',
                 'name',

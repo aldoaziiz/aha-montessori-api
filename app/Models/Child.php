@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 
 class Child extends Model
 {
@@ -32,6 +33,17 @@ class Child extends Model
         'session_started_at' => 'date',
         'session_expired_at' => 'date',
     ];
+
+    public function scopeActiveAndRegisteredInCategory(Builder $query, int $programCategoryId): Builder
+    {
+        return $query
+            ->where('status_id', 1)
+            ->whereHas('registrations', function (Builder $registrationQuery) use ($programCategoryId) {
+                $registrationQuery
+                    ->where('registration_status', Registration::STATUS_ACTIVE)
+                    ->where('program_category_id', $programCategoryId);
+            });
+    }
 
     protected static function booted()
     {

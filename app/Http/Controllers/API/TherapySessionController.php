@@ -1844,14 +1844,7 @@ class TherapySessionController extends Controller
         ]);
 
         $children = Child::query()
-            ->where(
-                'status_id',
-                1
-            )
-            ->where(
-                'program_category_id',
-                $validated['program_category_id']
-            )
+            ->activeAndRegisteredInCategory((int) $validated['program_category_id'])
             ->orderBy('name')
             ->get([
                 'id',
