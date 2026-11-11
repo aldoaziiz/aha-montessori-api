@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AppSetting;
 use App\Models\Child;
 use App\Models\Guardian;
+use App\Models\ProgramCategory;
 use App\Models\Registration;
 use App\Models\RegistrationProgram;
 use App\Models\User;
@@ -48,6 +49,7 @@ class PublicRegistrationController extends Controller
             ]);
 
             $selectedProgramCategoryId = (int) $request->registration['program_category_id'];
+            $selectedProgramCategory = ProgramCategory::query()->findOrFail($selectedProgramCategoryId);
             $programSelections = app(\App\Services\RegistrationProgramSelectionService::class)
                 ->resolve($request, $selectedProgramCategoryId);
             $selectedPrograms = collect($programSelections)->pluck('program');
@@ -81,6 +83,7 @@ class PublicRegistrationController extends Controller
                 collect($request->child)->except([
                     'session_started_at',
                     'session_expired_at',
+                    'program_category_id',
                 ])->all()
             );
 
@@ -210,9 +213,11 @@ class PublicRegistrationController extends Controller
             }
 
             $registration->syncSessionEntitlement();
-            $child->update([
-                'program_category_id' => $selectedProgramCategoryId,
-            ]);
+            if ($selectedProgramCategory->isToddlerOrKinder()) {
+                $child->update([
+                    'program_category_id' => $selectedProgramCategoryId,
+                ]);
+            }
 
             return response()->json([
 

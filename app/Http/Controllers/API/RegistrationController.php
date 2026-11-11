@@ -252,6 +252,7 @@ class RegistrationController extends Controller
                         collect($request->child)->except([
                             'session_started_at',
                             'session_expired_at',
+                            'program_category_id',
                         ])->all()
                     );
 
@@ -427,26 +428,12 @@ class RegistrationController extends Controller
 
             $registration->syncSessionEntitlement();
 
-            // ======================
-            // 7. UPDATE CHILD
-            // PROGRAM CATEGORY
-            // ======================
-
-            $firstProgram = $registration
-                ->registrationPrograms()
-                ->with('program')
-                ->first();
-
-            if ($firstProgram?->program) {
-
+            // Keep this legacy child field limited to Toddler/Kinder class categories.
+            $registration->loadMissing('programCategory');
+            if ($registration->programCategory?->isToddlerOrKinder()) {
                 $child->update([
-
-                    'program_category_id' => $firstProgram
-                        ->program
-                        ->program_category_id,
-
+                    'program_category_id' => $registration->programCategory->id,
                 ]);
-
             }
 
             return response()->json([
@@ -624,6 +611,12 @@ class RegistrationController extends Controller
                         'learning_period_months' => $selection['learning_period_months'],
                     ]);
                 }
+            }
+
+            if ($targetProgramCategory->isToddlerOrKinder()) {
+                $registration->child()->update([
+                    'program_category_id' => $targetProgramCategory->id,
+                ]);
             }
 
             $registration->syncSessionEntitlement();
