@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
-use App\Models\Child;
 use App\Models\TherapySession;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,45 +24,74 @@ class SchoolSessionsReportController extends Controller
             'sort_order' => ['nullable', 'in:asc,desc'],
         ]);
 
-        $totalSessions = DB::table('registrations')
-            ->selectRaw('COALESCE(SUM(total_session), 0)')
-            ->whereColumn('registrations.child_id', 'children.id');
+        // Older registrations may not have a direct category. Infer one only
+        // when all programs on that registration belong to the same category.
+        $categoryFallback = DB::table('registration_programs as rp')
+            ->join('programs as p', 'p.id', '=', 'rp.program_id')
+            ->select('rp.registration_id')
+            ->selectRaw('COUNT(DISTINCT p.program_category_id) as category_count')
+            ->selectRaw('MIN(p.program_category_id) as category_id')
+            ->groupBy('rp.registration_id');
 
-        $usedSessions = DB::table('therapy_sessions')
-            ->join('registrations', 'registrations.id', '=', 'therapy_sessions.registration_id')
-            ->selectRaw('COUNT(*)')
-            ->whereColumn('registrations.child_id', 'children.id')
-            ->where('therapy_sessions.therapy_session_status_id', TherapySession::STATUS_COMPLETED);
-
-        $query = Child::query()
+        $registrationCategories = DB::table('registrations as r')
+            ->leftJoinSub($categoryFallback, 'category_fallback', function ($join) {
+                $join->on('category_fallback.registration_id', '=', 'r.id');
+            })
             ->select([
-                'children.id',
-                'children.id_number',
-                'children.name as child_name',
-                'children.program_category_id',
-                'children.session_started_at',
-                'children.session_expired_at',
+                'r.id as registration_id',
+                'r.child_id',
+                'r.total_session',
             ])
-            ->selectSub($totalSessions, 'total_sessions')
-            ->selectSub($usedSessions, 'used_sessions')
-            ->with('programCategory:id,name')
-            ->whereHas('registrations');
+            ->selectRaw('COALESCE(r.program_category_id, CASE WHEN category_fallback.category_count = 1 THEN category_fallback.category_id ELSE NULL END) as program_category_id');
 
-        if (! empty($validated['program_category_id'])) {
-            $query->where('children.program_category_id', $validated['program_category_id']);
-        }
+        $usedSessions = DB::table('therapy_sessions as ts')
+            ->select('ts.registration_id')
+            ->selectRaw('COUNT(*) as used_sessions')
+            ->where('ts.therapy_session_status_id', TherapySession::STATUS_COMPLETED)
+            ->groupBy('ts.registration_id');
 
-        $childName = trim($validated['child_name'] ?? '');
-        if ($childName !== '') {
-            $query->where('children.name', 'like', '%'.$childName.'%');
-        }
+        $summary = DB::table('children as c')
+            ->joinSub($registrationCategories, 'registration_categories', function ($join) {
+                $join->on('registration_categories.child_id', '=', 'c.id');
+            })
+            ->leftJoin('program_categories as pc', 'pc.id', '=', 'registration_categories.program_category_id')
+            ->leftJoinSub($usedSessions, 'used_sessions', function ($join) {
+                $join->on('used_sessions.registration_id', '=', 'registration_categories.registration_id');
+            })
+            ->selectRaw("CONCAT(c.id, ':', COALESCE(registration_categories.program_category_id, 'unknown')) as id")
+            ->addSelect([
+                'c.id as child_id',
+                'c.id_number',
+                'c.name as child_name',
+                'registration_categories.program_category_id',
+                'pc.name as program_category_name',
+                'c.session_started_at',
+                'c.session_expired_at',
+            ])
+            ->selectRaw('SUM(COALESCE(registration_categories.total_session, 0)) as total_sessions')
+            ->selectRaw('SUM(COALESCE(used_sessions.used_sessions, 0)) as used_sessions')
+            ->when(! empty($validated['program_category_id']), function ($query) use ($validated) {
+                $query->where('registration_categories.program_category_id', $validated['program_category_id']);
+            })
+            ->when(trim($validated['child_name'] ?? '') !== '', function ($query) use ($validated) {
+                $query->where('c.name', 'like', '%'.trim($validated['child_name']).'%');
+            })
+            ->groupBy([
+                'c.id',
+                'c.id_number',
+                'c.name',
+                'registration_categories.program_category_id',
+                'pc.name',
+                'c.session_started_at',
+                'c.session_expired_at',
+            ]);
 
         $sortColumns = [
-            'id_number' => 'children.id_number',
-            'child_name' => 'children.name',
-            'program_category' => 'program_categories.name',
-            'session_started_at' => 'children.session_started_at',
-            'session_expired_at' => 'children.session_expired_at',
+            'id_number' => 'id_number',
+            'child_name' => 'child_name',
+            'program_category' => 'program_category_name',
+            'session_started_at' => 'session_started_at',
+            'session_expired_at' => 'session_expired_at',
             'total_sessions' => 'total_sessions',
             'used_sessions' => 'used_sessions',
             'remaining_sessions' => 'remaining_sessions',
@@ -71,10 +99,7 @@ class SchoolSessionsReportController extends Controller
         $sortBy = $validated['sort_by'] ?? 'child_name';
         $sortOrder = $validated['sort_order'] ?? 'asc';
 
-        if ($sortBy === 'program_category') {
-            $query->leftJoin('program_categories', 'program_categories.id', '=', 'children.program_category_id')
-                ->addSelect('program_categories.name as program_category_name');
-        }
+        $query = DB::query()->fromSub($summary, 'session_summary');
 
         if ($sortBy === 'remaining_sessions') {
             $query->orderByRaw('(COALESCE(total_sessions, 0) - COALESCE(used_sessions, 0)) '.$sortOrder);
@@ -83,25 +108,26 @@ class SchoolSessionsReportController extends Controller
         }
 
         $paginator = $query
-            ->orderBy('children.id')
+            ->orderBy('child_id')
+            ->orderBy('program_category_id')
             ->paginate(min(max((int) ($validated['per_page'] ?? 10), 1), 50));
 
-        $data = $paginator->getCollection()->map(function (Child $child) {
-            $total = (int) $child->total_sessions;
-            $used = (int) $child->used_sessions;
+        $data = collect($paginator->items())->map(function ($row) {
+            $total = (int) $row->total_sessions;
+            $used = (int) $row->used_sessions;
 
             return [
-                'id' => $child->id,
-                'id_number' => $child->id_number,
-                'child_name' => $child->child_name,
-                'program_category' => $child->programCategory?->name ?? '-',
-                'session_started_at' => $child->session_started_at?->toDateString(),
-                'session_expired_at' => $child->session_expired_at?->toDateString(),
+                'id' => (string) $row->id,
+                'id_number' => $row->id_number,
+                'child_name' => $row->child_name,
+                'program_category' => $row->program_category_name ?? '-',
+                'session_started_at' => $row->session_started_at,
+                'session_expired_at' => $row->session_expired_at,
                 'total_sessions' => $total,
                 'used_sessions' => $used,
                 'remaining_sessions' => $total - $used,
             ];
-        });
+        })->values();
 
         return response()->json([
             'data' => $data,
