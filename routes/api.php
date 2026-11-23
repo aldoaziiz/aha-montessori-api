@@ -13,6 +13,8 @@ use App\Http\Controllers\API\ClinicController;
 use App\Http\Controllers\API\GuardianController;
 use App\Http\Controllers\API\GuardianRoleController;
 use App\Http\Controllers\API\MasterDataController;
+use App\Http\Controllers\API\MilestoneCurriculumController;
+use App\Http\Controllers\API\MilestoneProgressReportController;
 use App\Http\Controllers\API\MonthlyAttendanceReportController;
 use App\Http\Controllers\API\PayerController;
 use App\Http\Controllers\API\ProgramCategoryController;
@@ -536,6 +538,32 @@ Route::middleware([
         '/reports/monthly-attendance',
         [MonthlyAttendanceReportController::class, 'index']
     );
+
+    // ======================
+    // MILESTONE PROGRESS REPORTS
+    // ======================
+
+    Route::get('/milestone-reports/children', [MilestoneProgressReportController::class, 'children']);
+    Route::get('/milestone-reports', [MilestoneProgressReportController::class, 'index']);
+    Route::post('/milestone-reports', [MilestoneProgressReportController::class, 'store']);
+    Route::get('/milestone-reports/{report}/pdf', [MilestoneProgressReportController::class, 'downloadPdf']);
+    Route::get('/milestone-reports/{report}', [MilestoneProgressReportController::class, 'show']);
+    Route::delete('/milestone-reports/{report}', [MilestoneProgressReportController::class, 'destroy']);
+
+    Route::get('/milestone-curricula', [MilestoneCurriculumController::class, 'index']);
+    Route::post('/milestone-curricula', [MilestoneCurriculumController::class, 'store']);
+    Route::put('/milestone-curricula/{curriculum}', [MilestoneCurriculumController::class, 'update']);
+    Route::delete('/milestone-curricula/{curriculum}', [MilestoneCurriculumController::class, 'destroy']);
+    Route::post('/milestone-areas', [MilestoneCurriculumController::class, 'storeArea']);
+    Route::put('/milestone-areas/{area}', [MilestoneCurriculumController::class, 'updateArea']);
+    Route::delete('/milestone-areas/{area}', [MilestoneCurriculumController::class, 'destroyArea']);
+    Route::post('/milestone-subareas', [MilestoneCurriculumController::class, 'storeSubarea']);
+    Route::put('/milestone-subareas/{subarea}', [MilestoneCurriculumController::class, 'updateSubarea']);
+    Route::delete('/milestone-subareas/{subarea}', [MilestoneCurriculumController::class, 'destroySubarea']);
+    Route::post('/curriculum-milestones', [MilestoneCurriculumController::class, 'storeMilestone']);
+    Route::put('/curriculum-milestones/{milestone}', [MilestoneCurriculumController::class, 'updateMilestone']);
+    Route::delete('/curriculum-milestones/{milestone}', [MilestoneCurriculumController::class, 'destroyMilestone']);
+    Route::get('/milestone-audit-logs', [MilestoneCurriculumController::class, 'auditLogs']);
 
     // ======================
     // ACTIVITY
