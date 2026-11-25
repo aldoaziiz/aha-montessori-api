@@ -7,6 +7,7 @@ use App\Models\BillingItem;
 use App\Models\Program;
 use App\Models\Registration;
 use App\Models\RegistrationProgram;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -58,17 +59,28 @@ class BillingGenerationService
                 ]);
             }
 
-            $today = now()->format('Ymd');
-            $count = Billing::whereDate('created_at', today())->count() + 1;
-            $invoiceNumber = 'INV-'.$today.'-'.str_pad($count, 4, '0', STR_PAD_LEFT);
+            $billing = null;
+            for ($attempt = 1; $attempt <= 3; $attempt++) {
+                try {
+                    $billing = Billing::create([
+                        'registration_id' => $registration->id,
+                        'invoice_number' => $this->nextInvoiceNumber(),
+                        'invoice_token' => Str::uuid(),
+                        'payment_status_id' => 1,
+                        'total_amount' => 0,
+                    ]);
 
-            $billing = Billing::create([
-                'registration_id' => $registration->id,
-                'invoice_number' => $invoiceNumber,
-                'invoice_token' => Str::uuid(),
-                'payment_status_id' => 1,
-                'total_amount' => 0,
-            ]);
+                    break;
+                } catch (QueryException $exception) {
+                    if (! $this->isInvoiceNumberCollision($exception) || $attempt === 3) {
+                        throw $exception;
+                    }
+                }
+            }
+
+            if (! $billing) {
+                throw new \RuntimeException('Unable to allocate a unique invoice number.');
+            }
 
             $total = 0;
 
@@ -124,7 +136,33 @@ class BillingGenerationService
             $billing->update(['total_amount' => $total]);
 
             return $billing->fresh(['items']);
-        });
+        }, 3);
+    }
+
+    private function nextInvoiceNumber(): string
+    {
+        $prefix = 'INV-'.now()->format('Ymd').'-';
+
+        $maxSequence = Billing::where('invoice_number', 'like', $prefix.'%')
+            ->lockForUpdate()
+            ->pluck('invoice_number')
+            ->map(function (string $invoiceNumber) use ($prefix): int {
+                $suffix = substr($invoiceNumber, strlen($prefix));
+
+                return ctype_digit($suffix) ? (int) $suffix : 0;
+            })
+            ->max() ?? 0;
+
+        return $prefix.str_pad((string) ($maxSequence + 1), 4, '0', STR_PAD_LEFT);
+    }
+
+    private function isInvoiceNumberCollision(QueryException $exception): bool
+    {
+        $errorCode = $exception->errorInfo[1] ?? null;
+        $message = strtolower($exception->getMessage());
+
+        return (string) $errorCode === '1062'
+            && str_contains($message, 'billings_invoice_number_unique');
     }
 
     private function ensureCanGenerate(Registration $registration): void
